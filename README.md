@@ -125,39 +125,69 @@ cp config.example.json config.json  # 编辑填入账号密码
 
 ## ⚡ 快速开始（Quick Start）
 
-**3 分钟上手：** 配置 → 分析 → 采样 → 下载
+**3 分钟上手：** 安装 → 对话 → 下载
+
+### ① 安装
 
 ```bash
-# ① 配置凭证（一次性）：编辑 config.json 填入 Earthdata 账号密码
-#    {"username": "...", "password": "..."}
+# pi 用户
+pi install npm:pi-asf-sentinel1-slc
 
-# ② 先分析数据质量（推荐）：轨道/卫星/frame 覆盖/逐时相/覆盖图
-python analyze.py --aoi 研究区.shp --start 20200101 --end 20251231 \
-  --pol VV+VH --out ./analysis --plot
-
-# ③ 交互式采样：选择频率（月/季/半年/年/全部）与时相规则
-python analyze.py --aoi 研究区.shp --start 20200101 --end 20251231 \
-  --pol VV+VH --out ./analysis --sample
-
-# ④ 按清单下载（断点续传 + 桌面进度条）
-python robust_download.py --aoi 研究区.shp --start 20200101 --end 20251231 \
-  --pol VV+VH --out ./sentinel1_data
+# 或其他 AI 工具（Codex / Claude Code / Cursor）
+curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
 ```
 
-**典型输出（一步到位）：**
+### ② 配置凭证（一次性）
+
+编辑技能目录 `config.json`，填入 Earthdata 账号密码。
+
+### ③ 直接在 AI 对话中使用（交互式）
+
+安装后在任意 AI 工具（pi / Codex / Claude Code）对话中直接说：
+
+> **"从 ASF 下载哨兵数据，区域 研究区.shp，时间 20200101 至 20251231，VV+VH"**
+
+AI 会自动完成全部流程，并**交互式询问**关键决策：
 
 ```
 [OK] 认证成功
-[OK] 极化 VV+VH: 搜索到 322 个结果
-[OK] 轨道一致性: ✅ [135]    卫星: S1A/S1C
+[OK] 极化 VV+VH: 搜索到 945 个结果
+[OK] 共 5 个 (方向,轨道) 组
+
+=== 可选轨道组（按景数排序） ===
+  [1] DESCENDING / 轨道 135: 322 景
+  [2] ASCENDING / 轨道 128: 248 景
+  [3] DESCENDING / 轨道 33: 176 景
+  ...
+请选择要使用的轨道组编号（回车选默认第 1 个）: 1   ← 交互式选择
+
+[OK] 轨道一致性校验通过: 全部 322 景均为轨道 135
+[OK] 逐时相覆盖检查: 169 个有效时相 / 0 个无效
   frame 468: 154景 覆盖100% ✅完全覆盖
   frame 467: 15景  覆盖100% ✅完全覆盖
-[OK] 逐时相覆盖: 169 有效 / 0 无效
-请选择取景频率: [2] 每月 → 每月采样 135 景
+
+请选择取景频率:            ← 交互式选择
+  [1] 全部（不采样）
+  [2] 每月
+  [3] 每季度
+  [4] 每半年
+  [5] 每年
+输入编号（回车默认每月）: 2
+
+每个区间取哪个时相？      ← 交互式选择
+  [1] 最早时相
+  [2] 中间时相
+  [3] 最晚时相
+输入编号（回车默认最早）: 1
+
+[OK] 每月采样(first时相): 135 景
 [OK] 清单已导出: sampled_DESCENDING_135_monthly.csv
+输入 y 全部下载，n 取消: y      ← 交互式确认
+[下载] ...（断点续传 + 桌面进度条）
 ```
 
-> 💡 **最小流程**：只下载不分析的话，直接 `python download.py --aoi 研究区.shp --start ... --end ... --pol VV+VH` 即可。
+> 💡 **命令行方式**（不用 AI 对话时）：`python analyze.py --aoi 研究区.shp --start ... --end ... --pol VV+VH --sample --plot` 分析，
+> 再 `python robust_download.py ...` 下载。
 
 ---
 
