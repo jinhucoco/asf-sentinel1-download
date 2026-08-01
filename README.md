@@ -88,62 +88,38 @@ NASA 免费注册: https://urs.earthdata.nasa.gov/，然后编辑 `config.json` 
 ## 🤖 在其他 AI 工具中使用（Codex / Claude Code / Cursor 等）
 
 本技能遵循 **Agent Skills 标准**（https://agentskills.io/specification），
-可以在任何支持该标准的 AI 工具中使用（OpenAI Codex、Claude Code、Cursor 等）。
+可以在任何支持该标准的 AI 工具中使用。**一条命令自动完成**：检测工具 →
+安装技能 → 安装 Python 依赖 → 生成凭证模板。
 
-### 步骤一：获取技能文件
-
-任选一种方式：
+### ⭐ 一键安装（推荐）
 
 ```bash
-# 方式 A：从 npm 包提取
-tar -xzf $(npm pack pi-asf-sentinel1-slc 2>/dev/null | tail -1)
-# 技能在 package/skills/asf-sentinel1-download/
+curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
+```
 
-# 方式 B：克隆 GitHub 仓库
+脚本会自动：
+1. 检测已安装的 AI 工具（Codex / Claude Code / pi）并安装到对应技能目录
+2. 安装 Python 依赖（asf_search / pyshp / shapely / defusedxml / matplotlib）
+3. 生成 `config.json` 凭证模板（提示你填入 Earthdata 账号密码）
+4. 未检测到任何工具时，安装到通用位置 `~/.agents/skills/`
+
+### 手动安装（可选）
+
+```bash
+# 1. 获取技能
 git clone https://github.com/jinhucoco/asf-sentinel1-download.git
-# 技能在 asf-sentinel1-download/skills/asf-sentinel1-download/
-```
 
-### 步骤二：复制到对应工具的技能目录
+# 2. 复制到对应工具目录
+cp -r skills/asf-sentinel1-download ~/.codex/skills/   # Codex
+cp -r skills/asf-sentinel1-download ~/.claude/skills/  # Claude Code
+cp -r skills/asf-sentinel1-download .agents/skills/    # 项目级（通用）
 
-```bash
-# OpenAI Codex
-mkdir -p ~/.codex/skills
-cp -r <技能路径> ~/.codex/skills/
-
-# Claude Code
-mkdir -p ~/.claude/skills
-cp -r <技能路径> ~/.claude/skills/
-
-# 或项目级使用（任意支持 Agent Skills 的工具）
-mkdir -p .agents/skills
-cp -r <技能路径> .agents/skills/
-```
-
-### 步骤三：安装 Python 依赖
-
-```bash
+# 3. 安装依赖 + 配置凭证
 pip install -r requirements.txt
+cp config.example.json config.json  # 编辑填入账号密码
 ```
 
-### 步骤四：配置 Earthdata 凭证
-
-在技能目录创建 `config.json`：
-
-```json
-{
-  "username": "your_earthdata_username",
-  "password": "your_earthdata_password"
-}
-```
-
-### 步骤五：使用
-
-在对应 AI 工具中直接描述需求，工具会自动加载技能：
-
-> **"从 ASF 下载哨兵数据，区域 `研究区.shp`，时间 20240101 至 20240630，VV+VH"**
-
-> 💡 **提示**：pi 用户无需手动复制——直接 `pi install npm:pi-asf-sentinel1-slc` 即可。
+> 💡 **pi 用户**：直接 `pi install npm:pi-asf-sentinel1-slc` 即可（无需脚本）。
 
 ---
 
