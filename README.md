@@ -6,6 +6,7 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-MIT-green)](#license)
 [![Test](https://img.shields.io/badge/Tests-33%20passing-brightgreen)](#测试)
+[![GitHub](https://img.shields.io/badge/GitHub-jinhucoco%2Fasf--sentinel1--download-blue?logo=github)](https://github.com/jinhucoco/asf-sentinel1-download)
 
 ---
 
@@ -40,7 +41,7 @@
 
 ```bash
 # 1. 克隆技能
-git clone <your-repo-url> ~/.pi/agent/skills/asf-sentinel1-download
+git clone https://github.com/jinhucoco/asf-sentinel1-download.git ~/.pi/agent/skills/asf-sentinel1-download
 
 # 2. 安装依赖
 pip install asf_search pyshp shapely
