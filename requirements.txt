@@ -1,0 +1,5 @@
+asf_search>=6.0,<13
+pyshp>=2.3,<4
+shapely>=2.0,<3
+defusedxml>=0.7
+matplotlib>=3.5
