@@ -32,6 +32,10 @@ AOI 矢量转 WKT、逐极化搜索（默认 VV+VH 与 VV 一起）并合并，
 
 ## 工作流
 
+0. **凭证配置（首次使用）**：若技能目录无 `config.json` 或未配置，
+   **主动询问用户**的 Earthdata 账号密码（免费注册 https://urs.earthdata.nasa.gov/），
+   自动写入 `config.json`（用户无需手动编辑文件）。
+   用户也可直接说："配置 ASF 账号密码：xxx / xxx"。
 1. **确认输入**：时间范围（YYYYMMDD 起止）、矢量路径（shp/kml）、
    极化（默认 VV+VH,VV）、下载目录（默认 ./sentinel1_data）
 2. **运行脚本**：
@@ -45,6 +49,8 @@ python ~/.pi/agent/skills/asf-sentinel1-download/download.py \
 3. **选择轨道组**：脚本按 (方向,轨道) 分组展示各轨道景数，输入编号选择
 4. **等待确认**：打印结果清单，输入 `y`（全部下载）、轨道号（筛选），或 `n`（取消）
 5. **下载完成**：校验文件存在且大小 > 0，汇报数量与路径
+
+> 💡 **交互式凭证**：告诉 AI "配置 ASF 账号密码"，AI 会引导你输入并保存到 config.json，全程无需手动编辑文件。
 
 ## 参数说明
 

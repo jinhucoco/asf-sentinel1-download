@@ -72,7 +72,11 @@ pip install -r requirements.txt
 
 ### 配置 Earthdata 凭证（两种方式都需要）
 
-NASA 免费注册: https://urs.earthdata.nasa.gov/，然后编辑 `config.json` 填入账号密码：
+NASA 免费注册: https://urs.earthdata.nasa.gov/
+
+**方式 A（推荐，交互式）：** 在 AI 对话中直接说 "配置 ASF 账号密码"，AI 引导输入并自动保存。
+
+**方式 B（手动）：** 编辑技能目录 `config.json`：
 
 ```json
 {
@@ -137,9 +141,22 @@ pi install npm:pi-asf-sentinel1-slc
 curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
 ```
 
-### ② 配置凭证（一次性）
+### ② 配置凭证（一次性，交互式）
 
-编辑技能目录 `config.json`，填入 Earthdata 账号密码。
+**无需手动编辑文件**——安装后直接在 AI 对话中说：
+
+> **"配置 ASF 账号密码"**
+
+AI 会引导你输入 NASA Earthdata 账号密码，自动写入 `config.json`。
+
+也可以手动编辑技能目录 `config.json`（二选一）：
+
+```json
+{
+  "username": "your_earthdata_username",
+  "password": "your_earthdata_password"
+}
+```
 
 ### ③ 直接在 AI 对话中使用（交互式）
 
