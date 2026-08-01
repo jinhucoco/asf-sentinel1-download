@@ -1,6 +1,6 @@
 {
-  "name": "asf-sentinel1-download",
-  "version": "1.0.0",
+  "name": "pi-asf-sentinel1-slc",
+  "version": "1.0.1",
   "description": "Pi skill: automatically download Sentinel-1 SLC IW data from ASF for SBAS-InSAR experiments. Same-track, same-direction, per-date full-coverage guarantees.",
   "keywords": [
     "pi-package",
@@ -23,8 +23,11 @@
     "url": "https://github.com/jinhucoco/asf-sentinel1-download/issues"
   },
   "pi": {
-    "skills": ["./skills"],
-    "image": "https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/docs/coverage_orbit135.png"
+    "skills": [
+      "./skills"
+    ],
+    "image": "https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/docs/coverage_orbit135.png",
+    "install": "pip install -r requirements.txt"
   },
   "files": [
     "skills",
@@ -37,12 +40,5 @@
     "config.example.json",
     "README.md",
     "LICENSE"
-  ],
-  "dependencies": {
-    "asf_search": ">=6.0,<13",
-    "pyshp": ">=2.3,<4",
-    "shapely": ">=2.0,<3",
-    "defusedxml": ">=0.7",
-    "matplotlib": ">=3.5"
-  }
+  ]
 }

@@ -6,7 +6,10 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-MIT-green)](#license)
 [![Test](https://img.shields.io/badge/Tests-33%20passing-brightgreen)](#测试)
+[![npm](https://img.shields.io/npm/v/pi-asf-sentinel1-slc?color=cb3837&logo=npm)](https://www.npmjs.com/package/pi-asf-sentinel1-slc)
 [![GitHub](https://img.shields.io/badge/GitHub-jinhucoco%2Fasf--sentinel1--download-blue?logo=github)](https://github.com/jinhucoco/asf-sentinel1-download)
+
+> **🚀 快速安装**：`pi install npm:pi-asf-sentinel1-slc`
 
 ---
 
@@ -39,16 +42,37 @@
 | NASA Earthdata 账号 | 免费注册：https://urs.earthdata.nasa.gov/ |
 | 网络 | 可访问 api.asf.alaska.edu（中国大陆用户建议代理） |
 
+### ⭐ 方式一：作为 Pi Skill 安装（推荐）
+
+**这是最推荐的方式**——安装后即可通过对话直接触发技能：
+
 ```bash
-# 1. 克隆技能
+# 一键安装（自动注册为 pi 技能）
+pi install npm:pi-asf-sentinel1-slc
+
+# 安装 Python 依赖（asf_search / pyshp / shapely 等）
+pip install asf_search pyshp shapely defusedxml matplotlib
+```
+
+安装完成后，直接对 pi 说：
+
+> **"从 ASF 下载哨兵数据，区域 `研究区.shp`，时间 20240101 至 20240630，VV+VH"**
+
+pi 会自动加载技能并执行：认证 → 搜索 → 轨道分组 → 覆盖校验 → 采样 → 下载。
+
+### 方式二：克隆 GitHub 仓库
+
+```bash
+# 克隆技能
 git clone https://github.com/jinhucoco/asf-sentinel1-download.git ~/.pi/agent/skills/asf-sentinel1-download
 
-# 2. 安装依赖
-pip install asf_search pyshp shapely
-
-# 3. 配置 Earthdata 凭证（NASA 免费注册: https://urs.earthdata.nasa.gov/）
-#    编辑 config.json，填入你的账号密码
+# 安装依赖
+pip install -r requirements.txt
 ```
+
+### 配置 Earthdata 凭证（两种方式都需要）
+
+NASA 免费注册: https://urs.earthdata.nasa.gov/，然后编辑 `config.json` 填入账号密码：
 
 ```json
 {
