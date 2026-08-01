@@ -85,6 +85,68 @@ NASA 免费注册: https://urs.earthdata.nasa.gov/，然后编辑 `config.json` 
 
 ---
 
+## 🤖 在其他 AI 工具中使用（Codex / Claude Code / Cursor 等）
+
+本技能遵循 **Agent Skills 标准**（https://agentskills.io/specification），
+可以在任何支持该标准的 AI 工具中使用（OpenAI Codex、Claude Code、Cursor 等）。
+
+### 步骤一：获取技能文件
+
+任选一种方式：
+
+```bash
+# 方式 A：从 npm 包提取
+tar -xzf $(npm pack pi-asf-sentinel1-slc 2>/dev/null | tail -1)
+# 技能在 package/skills/asf-sentinel1-download/
+
+# 方式 B：克隆 GitHub 仓库
+git clone https://github.com/jinhucoco/asf-sentinel1-download.git
+# 技能在 asf-sentinel1-download/skills/asf-sentinel1-download/
+```
+
+### 步骤二：复制到对应工具的技能目录
+
+```bash
+# OpenAI Codex
+mkdir -p ~/.codex/skills
+cp -r <技能路径> ~/.codex/skills/
+
+# Claude Code
+mkdir -p ~/.claude/skills
+cp -r <技能路径> ~/.claude/skills/
+
+# 或项目级使用（任意支持 Agent Skills 的工具）
+mkdir -p .agents/skills
+cp -r <技能路径> .agents/skills/
+```
+
+### 步骤三：安装 Python 依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 步骤四：配置 Earthdata 凭证
+
+在技能目录创建 `config.json`：
+
+```json
+{
+  "username": "your_earthdata_username",
+  "password": "your_earthdata_password"
+}
+```
+
+### 步骤五：使用
+
+在对应 AI 工具中直接描述需求，工具会自动加载技能：
+
+> **"从 ASF 下载哨兵数据，区域 `研究区.shp`，时间 20240101 至 20240630，VV+VH"**
+
+> 💡 **提示**：pi 用户无需手动复制——直接 `pi install npm:pi-asf-sentinel1-slc` 即可。
+
+---
+
 ## ⚡ 快速开始（Quick Start）
 
 **3 分钟上手：** 配置 → 分析 → 采样 → 下载

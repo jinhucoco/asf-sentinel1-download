@@ -18,6 +18,13 @@ AOI 矢量转 WKT、逐极化搜索（默认 VV+VH 与 VV 一起）并合并，
 自动过滤完全覆盖研究区的轨道组，列出清单等待确认、批量下载。
 基于官方 API，稳定可靠。
 
+## 环境要求
+
+- Python 3.10+
+- 依赖：`pip install asf_search pyshp shapely defusedxml matplotlib`（或 `pip install -r requirements.txt`）
+- NASA Earthdata 账号（免费注册 https://urs.earthdata.nasa.gov/），凭证存技能目录 `config.json`
+- 可选：matplotlib 用于覆盖图生成；tkinter 用于桌面进度条（无 GUI 环境可用 `--no-gui`）
+
 ## 何时使用
 
 - 用户需要从 ASF 下载特定时间范围、特定区域的 Sentinel-1 数据
