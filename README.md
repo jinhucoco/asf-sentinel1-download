@@ -69,7 +69,11 @@ curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/ma
 
 然后安装依赖：`pip install -r requirements.txt`。
 
+> ⚠️ **别忘了**：安装完成后还需**配置 Earthdata 账号密码**（见下方「配置 Earthdata 凭证」），否则 ASF 认证会失败、无法下载数据。
+
 > 💡 **Codex 沙箱用户必读**：Codex 沙箱默认**关闭网络**、**HOME 目录只读**，`curl | bash` 一键安装会失败。请在**宿主终端**（非沙箱）执行方式 1，或浏览器下载 zip 手动解压（方式 2，零命令行）。也可在对话中让 Codex 安装（需 `network_access=true` 且 `~/.codex` 可写）。安装脚本支持 `bash install.sh --dry-run` 预览操作，并在检测到沙箱时输出降级指引。
+>
+> 🔑 **装好后记得配置账号密码**：在 Codex 对话中说 **"配置 ASF 账号密码"**（或手动编辑 `~/.codex/skills/asf-sentinel1-download/config.json`，见下方「配置 Earthdata 凭证」）。未配置凭证时下载会认证失败。
 
 ### 配置 Earthdata 凭证（所有路径都需要）
 
