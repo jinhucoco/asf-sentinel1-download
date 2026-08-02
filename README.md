@@ -70,7 +70,40 @@ git clone https://github.com/jinhucoco/asf-sentinel1-download.git ~/.pi/agent/sk
 pip install -r requirements.txt
 ```
 
-### 配置 Earthdata 凭证（两种方式都需要）
+### 方式三：Codex 用户专用（沙箱受限环境）
+
+> ⚠️ **为什么需要专用方式**：Codex 沙箱默认**关闭网络**（`curl https://github.com` 返回 `403 blocked-by-allowlist`），且 **HOME 目录只读**（写 `~/.codex/skills` 报 `EROFS`）。因此 `curl ... | bash` 一键安装**大概率失败**——这是沙箱策略限制，不是脚本问题。
+
+任选一种：
+
+**路径 1（最简单）：宿主终端执行一键安装**
+
+在普通终端（非 Codex 沙箱）执行：
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
+```
+
+**路径 2（零命令行，推荐给沙箱受限用户）：浏览器下载 zip 解压**
+
+1. 下载：https://github.com/jinhucoco/asf-sentinel1-download/releases/latest/download/asf-sentinel1-download-skill.zip
+2. 解压得到 `asf-sentinel1-download/` 文件夹
+3. 复制到 `~/.codex/skills/`（Windows: `C:\Users\<你>\.codex\skills\`；Claude 用 `~/.claude/skills/`，pi 用 `~/.pi/agent/skills/`）
+4. 安装依赖：`pip install -r ~/.codex/skills/asf-sentinel1-download/requirements.txt`
+
+**路径 3（对话内让 Codex 自己装）**：需先为 Codex 开启沙箱网络与可写目录：
+
+```bash
+codex -s workspace-write -c 'sandbox_workspace_write.network_access=true'
+```
+
+并在 config.toml 中把 `~/.codex` 加入可写目录，然后对 Codex 说：
+
+> "克隆 https://github.com/jinhucoco/asf-sentinel1-download，把根目录的 SKILL.md、download.py、analyze.py、analysis.py、robust_download.py、progress_gui.py、requirements.txt、config.example.json 复制到 ~/.codex/skills/asf-sentinel1-download/，然后 pip install -r requirements.txt"
+
+> 💡 安装脚本支持 `bash install.sh --dry-run`（在沙箱里先看要做什么），以及沙箱检测：目标目录不可写时会输出上面的降级指引而不是静默失败。
+
+### 配置 Earthdata 凭证（所有方式都需要）
 
 NASA 免费注册: https://urs.earthdata.nasa.gov/
 
