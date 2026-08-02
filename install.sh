@@ -30,19 +30,28 @@ die()  { echo -e "${C_RED}[X]${C_NC} $*" >&2; exit 1; }
 
 # ---------- 定位技能源码 ----------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-if [ -d "$SCRIPT_DIR/skills/$SKILL_NAME" ]; then
+# 优先使用自包含的技能目录（含 SKILL.md + 脚本），否则回退仓库根目录
+if [ -d "$SCRIPT_DIR/skills/$SKILL_NAME" ] && [ -f "$SCRIPT_DIR/skills/$SKILL_NAME/download.py" ]; then
   SRC="$SCRIPT_DIR/skills/$SKILL_NAME"
-  info "使用本地技能源码: $SRC"
-elif [ -f "$SCRIPT_DIR/SKILL.md" ]; then
+  info "使用自包含技能目录: $SRC"
+elif [ -f "$SCRIPT_DIR/download.py" ] && [ -f "$SCRIPT_DIR/SKILL.md" ]; then
   SRC="$SCRIPT_DIR"
   info "使用仓库根目录技能: $SRC"
+elif [ -d "$SCRIPT_DIR/skills/$SKILL_NAME" ]; then
+  # 旧包结构：skills 子目录只有 SKILL.md，需从根目录补全
+  warn "检测到旧包结构（skills 子目录不完整），使用仓库根目录"
+  SRC="$SCRIPT_DIR"
 else
   TMP="$(mktemp -d)"
   trap 'rm -rf "$TMP"' EXIT
   info "下载技能包: $REPO_URL"
   git clone --depth 1 "$REPO_URL" "$TMP/repo" >/dev/null 2>&1 || die "无法克隆仓库，请检查网络"
-  SRC="$TMP/repo/skills/$SKILL_NAME"
-  [ -d "$SRC" ] || SRC="$TMP/repo"
+  # 优先自包含技能目录，否则仓库根目录
+  if [ -d "$TMP/repo/skills/$SKILL_NAME" ] && [ -f "$TMP/repo/skills/$SKILL_NAME/download.py" ]; then
+    SRC="$TMP/repo/skills/$SKILL_NAME"
+  else
+    SRC="$TMP/repo"
+  fi
 fi
 [ -f "$SRC/SKILL.md" ] || die "未找到 SKILL.md，技能源码无效: $SRC"
 
