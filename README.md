@@ -5,29 +5,23 @@
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue?logo=python)](https://www.python.org)
 [![License](https://img.shields.io/badge/License-MIT-green)](#license)
-[![Test](https://img.shields.io/badge/Tests-33%20passing-brightgreen)](#测试)
+[![Test](https://img.shields.io/badge/Tests-42%20passing-brightgreen)](#测试)
 [![npm](https://img.shields.io/npm/v/pi-asf-sentinel1-slc?color=cb3837&logo=npm)](https://www.npmjs.com/package/pi-asf-sentinel1-slc)
 [![GitHub](https://img.shields.io/badge/GitHub-jinhucoco%2Fasf--sentinel1--download-blue?logo=github)](https://github.com/jinhucoco/asf-sentinel1-download)
-
-> **🚀 快速安装**：`pi install npm:pi-asf-sentinel1-slc`
 
 ---
 
 ## 🌟 核心特性（Key Features）
 
-- **🎯 面向 SBAS-InSAR 设计**：自动保证同一轨道（相对轨道号）+ 同一方向（升/降轨）+ 完全覆盖研究区
-- **🔍 方向自动探测**：不预设升降轨，搜索后按 (方向, 轨道) 分组统计景数，让你选择用哪组
-- **🛡️ 轨道一致性严格校验**：下载前验证组内所有影像 pathNumber 完全一致（同 frame 可能被不同轨道复用）
-- **✅ 逐时相覆盖检查**：每个时相（同一天）影像并集必须完全覆盖研究区才有效，单帧部分覆盖的时相自动排除
-- **🛰️ 卫星一致性检查**：S1A/S1B/S1C 多卫星混杂自动提示
-- **📊 数据分析模式**：`analyze.py` 输出轨道/卫星/frame 覆盖/逐时相/覆盖图/清单，交互式采样频率
-- **📐 跨帧自动识别**：研究区压在上下两景边界时，自动识别并下载同一时相的上下两景
-- **🛰️ 多极化支持**：默认同时搜索 `VV+VH`（双极化）和 `VV`（单极化），合并清单
-- **📄 多格式矢量**：支持 `.shp` / `.kml`（含 SARscape 导出的 `earth.google.com` 命名空间 + 三维带海拔坐标）
-- **🔄 稳健下载**：断点续传 + 超时保护 + 自动重试，网络中断不丢进度
-- **📋 数据列表展示**：搜索后展示完整清单（日期/轨道/方向/极化/帧号/文件名），并保存到 `inventory.txt`
-- **📊 桌面进度条**：下载时 Tkinter 窗口实时显示当前文件 + 总进度 + 百分比
-- **🔒 凭证安全**：Earthdata 账号密码存本地 `config.json`，请手动设置文件权限仅本人可读
+- **🎯 面向 SBAS-InSAR 设计**：自动保证同一相对轨道 + 同一方向（升/降轨）+ 完全覆盖研究区，形成 12 天规则时序
+- **🛡️ 三重一致性校验**：轨道一致性（同 frame 可能被不同轨道复用，下载前验证 pathNumber 完全一致）、卫星一致性（S1A/S1B/S1C 混用提示）、**逐时相覆盖检查**（每个时相影像并集必须完全覆盖研究区，单帧部分覆盖的时相自动排除）
+- **📐 跨帧自动处理**：研究区压在上下两景边界时，自动识别并下载同一时相的全部帧（并集覆盖）
+- **🛰️ 多极化支持**：默认同时搜索 `VV+VH` 与 `VV`，合并清单
+- **🔄 稳健下载**：断点续传 + 超时保护 + 自动重试 + 桌面进度条，网络中断不丢进度
+- **📄 多格式矢量**：支持 `.shp` / `.kml`（含 SARscape 导出的命名空间与三维带海拔坐标）
+- **🔒 凭证本地安全**：Earthdata 账号密码存技能目录 `config.json`，交互式配置，不接触公开网络
+
+遵循 **Agent Skills 标准**（https://agentskills.io/specification），可在 pi / Codex / Claude Code / Cursor 等支持该标准的工具中使用。
 
 ---
 
@@ -37,14 +31,12 @@
 
 | 项 | 要求 |
 |----|------|
-| 操作系统 | Windows / Linux / macOS（进度条 GUI 推荐 Windows，其他平台可用 `--no-gui`） |
+| 操作系统 | Windows / Linux / macOS |
 | Python | 3.10+ |
 | NASA Earthdata 账号 | 免费注册：https://urs.earthdata.nasa.gov/ |
 | 网络 | 可访问 api.asf.alaska.edu（中国大陆用户建议代理） |
 
-### ⭐ 方式一：作为 Pi Skill 安装（推荐）
-
-**这是最推荐的方式**——安装后即可通过对话直接触发技能：
+### 路径 A：Pi 用户（推荐）
 
 ```bash
 # 一键安装（自动注册为 pi 技能）
@@ -54,60 +46,34 @@ pi install npm:pi-asf-sentinel1-slc
 pip install asf_search pyshp shapely defusedxml matplotlib
 ```
 
-安装完成后，直接对 pi 说：
+### 路径 B：其他 AI 工具（Codex / Claude Code / Cursor）
 
-> **"从 ASF 下载哨兵数据，区域 `研究区.shp`，时间 20240101 至 20240630，VV+VH"**
-
-pi 会自动加载技能并执行：认证 → 搜索 → 轨道分组 → 覆盖校验 → 采样 → 下载。
-
-### 方式二：克隆 GitHub 仓库
-
-```bash
-# 克隆技能
-git clone https://github.com/jinhucoco/asf-sentinel1-download.git ~/.pi/agent/skills/asf-sentinel1-download
-
-# 安装依赖
-pip install -r requirements.txt
-```
-
-### 方式三：Codex 用户专用（沙箱受限环境）
-
-> ⚠️ **为什么需要专用方式**：Codex 沙箱默认**关闭网络**（`curl https://github.com` 返回 `403 blocked-by-allowlist`），且 **HOME 目录只读**（写 `~/.codex/skills` 报 `EROFS`）。因此 `curl ... | bash` 一键安装**大概率失败**——这是沙箱策略限制，不是脚本问题。
-
-任选一种：
-
-**路径 1（最简单）：宿主终端执行一键安装**
-
-在普通终端（非 Codex 沙箱）执行：
+**方式 1（推荐）：宿主终端一键安装**
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
 ```
 
-**路径 2（零命令行，推荐给沙箱受限用户）：浏览器下载 zip 解压**
+脚本自动完成：检测已安装的工具（Codex / Claude / pi）→ 安装到对应技能目录 → 安装 Python 依赖 → 生成凭证模板。未检测到任何工具时安装到通用位置 `~/.agents/skills/`。
 
-1. 下载：https://github.com/jinhucoco/asf-sentinel1-download/releases/latest/download/asf-sentinel1-download-skill.zip
-2. 解压得到 `asf-sentinel1-download/` 文件夹
-3. 复制到 `~/.codex/skills/`（Windows: `C:\Users\<你>\.codex\skills\`；Claude 用 `~/.claude/skills/`，pi 用 `~/.pi/agent/skills/`）
-4. 安装依赖：`pip install -r ~/.codex/skills/asf-sentinel1-download/requirements.txt`
+**方式 2：手动安装（可选）**
 
-**路径 3（对话内让 Codex 自己装）**：需先为 Codex 开启沙箱网络与可写目录：
+下载 [asf-sentinel1-download-skill.zip](https://github.com/jinhucoco/asf-sentinel1-download/releases/latest/download/asf-sentinel1-download-skill.zip)，解压得到 `asf-sentinel1-download/` 文件夹，放入对应技能目录：
 
-```bash
-codex -s workspace-write -c 'sandbox_workspace_write.network_access=true'
+```
+~/.codex/skills/       # Codex
+~/.claude/skills/      # Claude Code
+~/.pi/agent/skills/    # pi
+~/.agents/skills/      # 通用
 ```
 
-并在 config.toml 中把 `~/.codex` 加入可写目录，然后对 Codex 说：
+然后安装依赖：`pip install -r requirements.txt`。
 
-> "克隆 https://github.com/jinhucoco/asf-sentinel1-download，把根目录的 SKILL.md、download.py、analyze.py、analysis.py、robust_download.py、progress_gui.py、requirements.txt、config.example.json 复制到 ~/.codex/skills/asf-sentinel1-download/，然后 pip install -r requirements.txt"
+> 💡 **Codex 沙箱用户必读**：Codex 沙箱默认**关闭网络**、**HOME 目录只读**，`curl | bash` 一键安装会失败。请在**宿主终端**（非沙箱）执行方式 1，或浏览器下载 zip 手动解压（方式 2，零命令行）。也可在对话中让 Codex 安装（需 `network_access=true` 且 `~/.codex` 可写）。安装脚本支持 `bash install.sh --dry-run` 预览操作，并在检测到沙箱时输出降级指引。
 
-> 💡 安装脚本支持 `bash install.sh --dry-run`（在沙箱里先看要做什么），以及沙箱检测：目标目录不可写时会输出上面的降级指引而不是静默失败。
+### 配置 Earthdata 凭证（所有路径都需要）
 
-### 配置 Earthdata 凭证（所有方式都需要）
-
-NASA 免费注册: https://urs.earthdata.nasa.gov/
-
-**方式 A（推荐，交互式）：** 在 AI 对话中直接说 "配置 ASF 账号密码"，AI 引导输入并自动保存。
+**方式 A（推荐，交互式）：** 在 AI 对话中直接说 **"配置 ASF 账号密码"**，AI 引导输入并自动保存到 `config.json`，无需手动编辑文件。
 
 **方式 B（手动）：** 编辑技能目录 `config.json`：
 
@@ -118,44 +84,15 @@ NASA 免费注册: https://urs.earthdata.nasa.gov/
 }
 ```
 
-> ⚠️ **安全提示**：config.json 含明文密码，请确保文件权限仅本人可读写，切勿提交到公开仓库。
+> ⚠️ **安全提示**：`config.json` 含明文密码，仅本机使用，请确保文件权限仅本人可读写，切勿提交到公开仓库。
 
 ---
 
 ## ⚡ 快速开始（Quick Start）
 
-**3 分钟上手：** 安装 → 对话 → 下载
+**3 分钟上手：** ① 安装（见上）→ ② 配置凭证（对话中说"配置 ASF 账号密码"）→ ③ 直接使用：
 
-### ① 安装
-
-```bash
-# pi 用户
-pi install npm:pi-asf-sentinel1-slc
-
-# 或其他 AI 工具（Codex / Claude Code / Cursor）
-curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
-```
-
-### ② 配置凭证（一次性，交互式）
-
-**无需手动编辑文件**——安装后直接在 AI 对话中说：
-
-> **"配置 ASF 账号密码"**
-
-AI 会引导你输入 NASA Earthdata 账号密码，自动写入 `config.json`。
-
-也可以手动编辑技能目录 `config.json`（二选一）：
-
-```json
-{
-  "username": "your_earthdata_username",
-  "password": "your_earthdata_password"
-}
-```
-
-### ③ 直接在 AI 对话中使用（交互式）
-
-安装后在任意 AI 工具（pi / Codex / Claude Code）对话中直接说：
+在任意 AI 工具（pi / Codex / Claude Code）对话中说：
 
 > **"从 ASF 下载哨兵数据，区域 研究区.shp，时间 20200101 至 20251231，VV+VH"**
 
@@ -198,68 +135,28 @@ AI 会自动完成全部流程，并**交互式询问**关键决策：
 [下载] ...（断点续传 + 桌面进度条）
 ```
 
-> 💡 **命令行方式**（不用 AI 对话时）：`python analyze.py --aoi 研究区.shp --start ... --end ... --pol VV+VH --sample --plot` 分析，
-> 再 `python robust_download.py ...` 下载。
-
----
-
-## 🤖 在其他 AI 工具中使用（Codex / Claude Code / Cursor 等）
-
-本技能遵循 **Agent Skills 标准**（https://agentskills.io/specification），
-可以在任何支持该标准的 AI 工具中使用。**一条命令自动完成**：检测工具 →
-安装技能 → 安装 Python 依赖 → 生成凭证模板。
-
-### ⭐ 一键安装（推荐）
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
-```
-
-脚本会自动：
-1. 检测已安装的 AI 工具（Codex / Claude Code / pi）并安装到对应技能目录
-2. 安装 Python 依赖（asf_search / pyshp / shapely / defusedxml / matplotlib）
-3. 生成 `config.json` 凭证模板（提示你填入 Earthdata 账号密码）
-4. 未检测到任何工具时，安装到通用位置 `~/.agents/skills/`
-
-### 手动安装（可选）
-
-```bash
-# 1. 获取技能
-git clone https://github.com/jinhucoco/asf-sentinel1-download.git
-
-# 2. 复制到对应工具目录
-cp -r skills/asf-sentinel1-download ~/.codex/skills/   # Codex
-cp -r skills/asf-sentinel1-download ~/.claude/skills/  # Claude Code
-cp -r skills/asf-sentinel1-download .agents/skills/    # 项目级（通用）
-
-# 3. 安装依赖 + 配置凭证
-pip install -r requirements.txt
-cp config.example.json config.json  # 编辑填入账号密码
-```
-
-> 💡 **pi 用户**：直接 `pi install npm:pi-asf-sentinel1-slc` 即可（无需脚本）。
-
 ---
 
 ## 🚀 使用（Usage）
 
-### 交互式（推荐，对话式触发技能）
+### 对话式（推荐）
 
-当技能被 AI 代理（如 pi）加载时，直接说：
+当技能被 AI 代理加载时，直接说：
 
-> "从 ASF 下载哨兵数据，区域 `研究区.shp`，时间 20240101 至 20240630，VV+VH 和 VV"
+> **"从 ASF 下载哨兵数据，区域 `研究区.shp`，时间 20240101 至 20240630，VV+VH 和 VV"**
 
-AI 会自动执行：认证 → 搜索 → 轨道分组 → 展示选择 → 清单确认 → 下载。
+AI 自动执行：认证 → 搜索 → 轨道分组 → 展示选择 → 覆盖校验 → 采样 → 确认 → 下载。
 
-### 命令行（手动）
+### 命令行（手动，不用 AI 对话时）
 
 ```bash
-python download.py \
-  --aoi 研究区.kml \
-  --start 20240101 \
-  --end 20240630 \
-  --pol "VV+VH,VV" \
-  --out ./sentinel1_data
+# 先分析数据质量（轨道/卫星/frame 覆盖/逐时相/覆盖图/清单）
+python analyze.py --aoi 研究区.kml --start 20200101 --end 20251231 \
+  --pol VV+VH --out ./analysis --sample --plot
+
+# 再下载（稳健版：断点续传 + 超时 + 重试 + 桌面进度条）
+python robust_download.py --aoi 研究区.kml --start 20240101 --end 20240630 \
+  --pol VV+VH --out ./sentinel1_data
 ```
 
 ### 参数说明
@@ -269,20 +166,13 @@ python download.py \
 | `--aoi` | 是 | 矢量文件路径，`.shp` 或 `.kml`（WGS84 坐标） |
 | `--start` / `--end` | 是 | 起止日期，格式 `YYYYMMDD` |
 | `--pol` | 否 | 极化（逗号分隔可多个），默认 `VV+VH,VV` |
-| `--out` | 否 | 下载目录，默认 `./sentinel1_data`（当前目录下） |
+| `--out` | 否 | 下载目录，默认 `./sentinel1_data` |
 | `--max` | 否 | 每个极化的结果数量上限 |
+| `--sample` | 否 | （analyze.py）交互式采样：每月/每季/每半年/每年/全部 |
+| `--plot` | 否 | （analyze.py）生成研究区 vs 影像覆盖图 |
+| `--no-gui` | 否 | 关闭桌面进度条窗口 |
 
-### 稳健下载（网络不稳定时推荐）
-
-```bash
-python robust_download.py \
-  --aoi 研究区.kml --start 20240101 --end 20240630 \
-  --pol VV+VH --out ./sentinel1_data
-```
-
-特点：断点续传（`.part` 标记）、60s socket 超时、120s 读超时、最多 10 次自动重试、跳过已完成文件。
-下载时自动弹出**桌面进度条窗口**（当前文件 + 总进度 + 百分比），
-加 `--no-gui` 可关闭进度条。搜索后会生成 `inventory.txt` 数据清单。
+稳健下载特点：断点续传（`.part` 标记）、60s socket 超时、120s 读超时、最多 10 次自动重试、跳过已完成文件；搜索后生成 `inventory.txt` 数据清单。
 
 ---
 
@@ -315,17 +205,6 @@ SBAS（小基线集）干涉处理要求时间序列内所有影像：
 ⑧ 清单确认（可输入轨道号筛选）→ 批量下载
 ⑨ 下载校验（大小 > 0）
 ```
-
-### 数据分析模式（推荐先分析后下载）
-
-```bash
-python analyze.py --aoi 研究区.kml --start 20200101 --end 20251231 \
-  --pol VV+VH --out ./analysis --sample --plot
-```
-
-输出：轨道/卫星一致性、frame 覆盖分析（面积比/是否完全覆盖）、
-逐时相覆盖统计、覆盖图、CSV 清单。加 `--sample` 会交互式询问
-采样频率（每月/每季/每半年/每年/全部）与时相规则（最早/中/最晚）。
 
 ### 跨帧边界处理（Cross-Frame）
 
@@ -389,11 +268,15 @@ asf-sentinel1-download/
 ├── robust_download.py    # 稳健下载（断点续传 + 超时 + 重试 + 数据列表）
 ├── progress_gui.py       # 桌面进度条（Tkinter）
 ├── requirements.txt      # 依赖清单
-├── config.json           # Earthdata 凭证（本地安全存储）
-└── tests/                # 33 个单元测试
+├── config.example.json   # 凭证模板（安装时复制为 config.json，本地填写真实账号）
+├── install.sh            # 一键安装脚本（检测 Codex/Claude/pi）
+└── tests/                # 42 个单元测试
     ├── test_download.py
-    └── test_analysis.py
+    ├── test_analysis.py
+    └── test_package_consistency.py   # 发布镜像与根目录一致性守护
 ```
+
+> 📌 仓库 `skills/asf-sentinel1-download/` 是**发布镜像**（npm 与 install.sh 整体复制此目录），与根目录由 `tests/test_package_consistency.py` 自动校验同步。
 
 ### download.py 核心函数
 
@@ -431,7 +314,7 @@ cd asf-sentinel1-download
 python -m pytest tests/ -v
 ```
 
-**33 个测试全部通过**，覆盖：
+**42 个测试全部通过**，覆盖：
 - 日期/极化/方向参数解析
 - shp/kml → WKT 转换（含 SARscape 三维坐标）
 - 单景覆盖 + 跨帧并集覆盖
@@ -440,6 +323,7 @@ python -m pytest tests/ -v
 - 卫星一致性（S1A/S1C）
 - frame 覆盖面积比分析
 - 按频率采样（月/季/半年/年）
+- 发布镜像一致性（根目录 vs skills/ 副本，防漂移）
 - 文件名消毒、URL 白名单（安全）
 - 清单格式、确认流程
 
