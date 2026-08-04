@@ -13,6 +13,19 @@
 
 ## 🌟 核心特性（Key Features）
 
+**功能总览：一套技能覆盖 SBAS-InSAR 完整数据链**
+
+| 功能 | 脚本 | 需要账号 |
+|------|------|---------|
+| 🛰️ Sentinel-1 SLC 主数据下载（轨道分组/覆盖校验/多线程） | `download.py` `multi_download.py` `robust_download.py` | ✅ Earthdata |
+| 📡 精密轨道文件 POEORB（与 SLC 时相对应） | `poeorb_download.py` | ❌ 免账号 |
+| 🌤️ GACOS 大气延迟 ztd（时相 + 范围 + UTC 时刻） | `gacos_download.py` `gacos_fetch.py` | ❌ 仅需邮箱收结果 |
+| ⛰️ DEM 30m（NASADEM 官方源，研究区自动分幅） | `dem_download.py` | ✅ Earthdata |
+
+---
+
+**核心能力：**
+
 - **🎯 面向 SBAS-InSAR 设计**：自动保证同一相对轨道 + 同一方向（升/降轨）+ 完全覆盖研究区，形成 12 天规则时序
 - **🛡️ 三重一致性校验**：轨道一致性（同 frame 可能被不同轨道复用，下载前验证 pathNumber 完全一致）、卫星一致性（S1A/S1B/S1C 混用提示）、**逐时相覆盖检查**（每个时相影像并集必须完全覆盖研究区，单帧部分覆盖的时相自动排除）
 - **📐 跨帧自动处理**：研究区压在上下两景边界时，自动识别并下载同一时相的全部帧（并集覆盖）
@@ -31,12 +44,22 @@
 
 ### 前置条件（Prerequisites）
 
+**账号要求（按功能）：**
+
+| 功能 | 需要的账号 | 说明 |
+|------|-----------|------|
+| SLC 主数据下载 | **NASA Earthdata**（必需）| 免费注册：https://urs.earthdata.nasa.gov/ ；用于 ASF 搜索与下载认证 |
+| DEM 下载 | **NASA Earthdata**（必需）| 与 SLC 下载同一个账号 |
+| POEORB 精密轨道 | **无需账号** | ESA 公开服务器直接下载 |
+| GACOS 大气延迟 | **无需注册**，需一个可收邮件的邮箱 | 结果通过邮件发送（需邮箱 IMAP 授权码用于自动收件，163/QQ 邮箱均可） |
+
+**环境要求：**
+
 | 项 | 要求 |
 |----|------|
 | 操作系统 | Windows / Linux / macOS |
 | Python | 3.10+ |
-| NASA Earthdata 账号 | 免费注册：https://urs.earthdata.nasa.gov/ |
-| 网络 | 可访问 api.asf.alaska.edu（中国大陆用户建议代理） |
+| 网络 | 可访问 api.asf.alaska.edu（中国大陆用户建议代理）|
 
 ### 路径 A：Pi 用户（推荐）
 
