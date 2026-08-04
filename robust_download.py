@@ -180,7 +180,7 @@ def main():
     for pol in pols:
         r = asf_search.geo_search(
             platform='SENTINEL-1', processingLevel='SLC', beamMode='IW',
-            polarization=pol, start=iso_datetime(args.start), end=iso_datetime(args.end),
+            polarization=pol, start=iso_datetime(args.start), end=iso_datetime_end(args.end),
             intersectsWith=wkt)
         print(f'[OK] 极化 {pol}: {len(r)} 个结果')
         all_results.extend(r)

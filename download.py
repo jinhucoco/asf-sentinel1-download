@@ -39,6 +39,13 @@ def ymd_to_mdy(s):
     return f'{s[4:6]}/{s[6:8]}/{s[0:4]}'
 
 
+def iso_datetime_end(s):
+    """结束日期闭区间：YYYYMMDD → (end+1) 日 00:00:00Z（CMR 搜索含结束日当天，
+    Sentinel-1 夜间过境 ~23:10 UTC，直接传 end 00:00 会丢失结束日全天数据）"""
+    from datetime import datetime as _dt, timedelta as _td
+    d = _dt.strptime(str(s).strip(), '%Y%m%d')
+    return (d + _td(days=1)).strftime('%Y-%m-%dT00:00:00Z')
+
 def iso_datetime(s):
     """YYYYMMDD → YYYY-MM-DDT00:00:00Z（asf_search 需要的 ISO 格式）
 
@@ -305,7 +312,7 @@ def run_download(aoi_path, start, end, polarizations, out_dir,
             beamMode='IW',
             polarization=pol,
             start=iso_datetime(start),
-            end=iso_datetime(end),
+            end=iso_datetime_end(end),
             intersectsWith=wkt,
         )
         if max_results:
@@ -448,6 +455,10 @@ def run_download(aoi_path, start, end, polarizations, out_dir,
                 u = urlparse(url)
                 if u.scheme != 'https':
                     raise ValueError(f'下载 URL 非 HTTPS: {url[:60]}')
+                host = (u.hostname or '').lower()
+                allowed = ('asf.alaska.edu', 'earthdata.nasa.gov', 'amazonaws.com', 'amazonaws.com.cn')
+                if not any(host.endswith('.' + d) or host == d for d in allowed):
+                    raise ValueError(f'下载 URL host 不在白名单: {host}')
             r.download(path=out_dir, session=session)
             dest = os.path.join(out_dir, fname)
             if os.path.exists(dest) and os.path.getsize(dest) > 0:

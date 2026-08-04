@@ -34,8 +34,13 @@ def aoi_to_bbox(aoi):
         import shapefile
         r = shapefile.Reader(aoi)
         pts = [p for shape in r.shapes() for p in shape.points]
-    else:  # kml
-        import xml.etree.ElementTree as ET
+    else:  # kml（defusedxml 防 XXE + 大小限制）
+        if os.path.getsize(aoi) > 10 * 1024 * 1024:
+            raise ValueError(f'KML 文件过大: {aoi}')
+        try:
+            from defusedxml import ElementTree as ET
+        except ImportError:
+            raise ValueError('缺少 defusedxml（安全 XML 解析库），请 pip install defusedxml')
         ns = {'k': 'http://www.opengis.net/kml/2.2'}
         tree = ET.parse(aoi)
         coords = tree.findall('.//k:coordinates', ns)
@@ -49,11 +54,13 @@ def aoi_to_bbox(aoi):
     return min(lons), min(lats), max(lons), max(lats)
 
 def tiles_for_bbox(lon_min, lat_min, lon_max, lat_max):
-    """推导 NASADEM 分幅（n37e102 覆盖 37-38N, 102-103E）"""
+    """推导 NASADEM 分幅（n37e102 覆盖 37-38N, 102-103E；南纬 s、西经 w）"""
     tiles = []
     for lat in range(math.floor(lat_min), math.ceil(lat_max)):
         for lon in range(math.floor(lon_min), math.ceil(lon_max)):
-            tiles.append(f'n{abs(lat):02d}e{abs(lon):03d}')
+            ns = 's' if lat < 0 else 'n'
+            ew = 'w' if lon < 0 else 'e'
+            tiles.append(f'{ns}{abs(lat):02d}{ew}{abs(lon):03d}')
     return sorted(tiles)
 
 def main():
@@ -99,6 +106,9 @@ def main():
     # 解压
     for z in glob.glob(os.path.join(args.out, '*.zip')):
         with zipfile.ZipFile(z) as zf:
+            for m in zf.namelist():
+                if m.startswith('/') or '..' in m.split('/') or (':' in m.split('/')[0]):
+                    raise ValueError(f'不安全成员: {m}')
             zf.extractall(args.out)
         os.remove(z)
     hgts = sorted(glob.glob(os.path.join(args.out, '*.hgt')))

@@ -50,8 +50,16 @@ def main():
         dates = [d.strip() for d in args.dates.split(',') if d.strip()]
     else:
         dates = [l.strip() for l in open(args.list, encoding='utf-8') if l.strip()]
+    import re as _re
+    bad = [d for d in dates if not _re.fullmatch(r'\d{8}', d)]
+    if bad:
+        print(f'[!] 非法日期（需 YYYYMMDD）: {bad[:5]}')
+        return
     if not dates:
         print('[!] 日期列表为空')
+        return
+    if not _re.fullmatch(r'\d{2}:\d{2}', args.time):
+        print('[!] --time 需 HH:MM 格式（UTC）')
         return
     print(f'共 {len(dates)} 个日期，分 {len(split_batches(dates))} 批提交（每批 ≤20）')
 

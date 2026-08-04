@@ -56,6 +56,9 @@ def download_eof(url, dest_zip, dest_eof):
                 break
             f.write(chunk)
     with zipfile.ZipFile(dest_zip) as z:
+        for m in z.namelist():
+            if m.startswith('/') or '..' in m.split('/') or (':' in m.split('/')[0]):
+                raise ValueError(f'不安全成员: {m}')
         z.extractall(os.path.dirname(dest_eof))
     os.remove(dest_zip)
     return 'ok'

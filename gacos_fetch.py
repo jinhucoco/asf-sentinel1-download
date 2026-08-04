@@ -92,6 +92,9 @@ def main():
                     log(f'  下载: {name} ({os.path.getsize(tgz)/1e6:.1f}MB)', logfile)
                 try:
                     with tarfile.open(tgz, 'r:gz') as t:
+                        for m in t.getmembers():
+                            if m.name.startswith('/') or '..' in m.name.split('/') or (':' in m.name.split('/')[0]):
+                                raise ValueError(f'不安全成员: {m.name}')
                         t.extractall(args.out)
                     ztds = [os.path.basename(m.name) for m in tarfile.open(tgz, 'r:gz').getmembers() if m.name.endswith('.ztd')]
                     log(f'  解压 ztd: {len(ztds)} 个', logfile)

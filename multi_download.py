@@ -173,8 +173,8 @@ def search_and_group(aoi, start, end, pols):
     wkt = aoi_to_wkt(aoi)
     results = []
     for pol in pols:
-        r = asf.geo_search(platform='SENTINEL-1', processingLevel='SLC',
-                           polarization=pol, start=iso_datetime(start), end=iso_datetime(end),
+        r = asf.geo_search(platform='SENTINEL-1', processingLevel='SLC', beamMode='IW',
+                           polarization=pol, start=iso_datetime(start), end=iso_datetime_end(end),
                            intersectsWith=wkt)
         results.extend(r)
     groups = {}
@@ -244,13 +244,19 @@ def main():
         log(f'搜索路径: {len(rows)} 景', logfile)
 
     ok = fail = skip = fail_streak = 0
+    completed = True  # 完整跑完清单才写 complete.flag（降级/中断不写）
     # 下载模式：multi=多线程分片，single=单文件（自动降级后，标记存输出目录）
-    mode = 'single' if os.path.exists(os.path.join(args.out, 'mode.flag')) and open(os.path.join(args.out, 'mode.flag')).read().strip() == 'single' else 'multi'
+    with open(os.path.join(args.out, 'mode.flag')) as f:
+        mode = 'single' if os.path.exists(os.path.join(args.out, 'mode.flag')) and f.read().strip() == 'single' else 'multi'
     log(f'[MODE] 下载模式: {mode}{"（已自动降级）" if mode=="single" else ""}', logfile)
     for i, r in enumerate(rows, 1):
         fname = r.get('file', '').strip()
         if not fname:
             fail += 1
+            continue
+        # 文件名消毒（防路径穿越，F4）
+        if fname.startswith('/') or '..' in fname.split('/') or (':' in fname.split('/')[0]) or fname in ('.', '..'):
+            log(f'[{i}/{len(rows)}] [WARN] 非法文件名，跳过: {fname[:50]}', logfile)
             continue
         dest = os.path.join(args.out, fname)
         if os.path.exists(dest) and os.path.getsize(dest) > 1024:
@@ -286,6 +292,7 @@ def main():
                     with open(os.path.join(args.out, 'mode.flag'), 'w', encoding='utf-8') as f:
                         f.write('single')
                     log(f'[DOWNGRADE] 多线程连续 {fail_streak} 文件作废，自动切换单文件模式，退出重启', logfile)
+                    completed = False
                     break
         except Exception as e:
             fail += 1
@@ -293,14 +300,15 @@ def main():
         time.sleep(2)
 
     log(f'=== 完成: 成功 {ok} / 失败 {fail} / 跳过 {skip} ===', logfile)
-    # 任务完成标记（配合守护脚本防止无限重启）
-    try:
-        cf = os.path.join(args.out, 'complete.flag')
-        with open(cf, 'w', encoding='utf-8') as f:
-            f.write(time.strftime('%Y-%m-%d %H:%M:%S'))
-        log(f'[DONE] 任务完成，写入标记: {cf}', logfile)
-    except Exception:
-        pass
+    # 任务完成标记（配合守护脚本防止无限重启；仅完整跑完清单时写）
+    if completed:
+        try:
+            cf = os.path.join(args.out, 'complete.flag')
+            with open(cf, 'w', encoding='utf-8') as f:
+                f.write(time.strftime('%Y-%m-%d %H:%M:%S'))
+            log(f'[DONE] 任务完成，写入标记: {cf}', logfile)
+        except Exception:
+            pass
 
 if __name__ == '__main__':
     main()
