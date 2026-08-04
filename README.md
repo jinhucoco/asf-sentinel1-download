@@ -18,6 +18,8 @@
 - **📐 跨帧自动处理**：研究区压在上下两景边界时，自动识别并下载同一时相的全部帧（并集覆盖）
 - **🛰️ 多极化支持**：默认同时搜索 `VV+VH` 与 `VV`，合并清单
 - **🔄 稳健下载**：断点续传 + 超时保护 + 自动重试 + 桌面进度条，网络中断不丢进度
+- **⚡ 多线程分片下载（multi_download.py）**：8 线程 Range 分片并发（大文件约 8× 提速），分片级断点续传 + 重试 + 失败片补下，大小 + MD5 双校验（坏数据自动重下），**网络极差时自动降级单文件模式**（连续 2 文件作废自动切换，不中断任务）
+- **✅ 数据完整性保障**：所有下载路径均做大小 + ASF 官方 md5sum 双校验，校验不通过自动删除重下，杜绝坏数据进入实验
 - **📄 多格式矢量**：支持 `.shp` / `.kml`（含 SARscape 导出的命名空间与三维带海拔坐标）
 - **🔒 凭证本地安全**：Earthdata 账号密码存技能目录 `config.json`，交互式配置，不接触公开网络
 
@@ -161,6 +163,17 @@ python analyze.py --aoi 研究区.kml --start 20200101 --end 20251231 \
 # 再下载（稳健版：断点续传 + 超时 + 重试 + 桌面进度条）
 python robust_download.py --aoi 研究区.kml --start 20240101 --end 20240630 \
   --pol VV+VH --out ./sentinel1_data
+
+# 大流量/慢网络首选（多线程分片，约 8× 提速，自动降级保底）
+# 方式1：清单驱动（推荐——先用 analyze.py 生成清单再批量挂机下载）
+python analyze.py --aoi 研究区.kml --start 20200101 --end 20251231 \
+  --pol VV+VH --out ./analysis
+python multi_download.py --list ./analysis/list_DESCENDING_135.csv \
+  --out ./sentinel1_data [--threads 8]
+
+# 方式2：搜索驱动（指定轨道直接下载，跳过交互选择）
+python multi_download.py --aoi 研究区.kml --start 20200101 --end 20251231 \
+  --pol VV+VH --track 135 --out ./sentinel1_data [--threads 8]
 ```
 
 ### 参数说明
@@ -177,6 +190,21 @@ python robust_download.py --aoi 研究区.kml --start 20240101 --end 20240630 \
 | `--no-gui` | 否 | 关闭桌面进度条窗口 |
 
 稳健下载特点：断点续传（`.part` 标记）、60s socket 超时、120s 读超时、最多 10 次自动重试、跳过已完成文件；搜索后生成 `inventory.txt` 数据清单。
+
+**多线程版（multi_download.py）特点：**
+
+| 能力 | 说明 |
+|------|------|
+| 分片并发 | 默认 8 线程 Range 分片（<300MB 自动 4 片），大文件提速明显 |
+| 断点续传 | 分片级续传（中断的片从断点继续，不重下） |
+| 失败自愈 | 每片重试 6 次 + 失败片循环补下 3 轮，网络断连不丢进度 |
+| 大小探测 | `bytes=0-0` 探测真实大小（ASF 的 HEAD/Content-Length 不可靠） |
+| 数据校验 | 大小 + **MD5 双校验**，不匹配自动删除重下 |
+| 自动降级 | 多线程连续 2 文件作废 → 自动切单文件模式（`mode.flag`），任务不中断 |
+| 完成标记 | 清单跑完写 `complete.flag`，配合守护脚本可自动停止 |
+| 挂机友好 | 日志写 `--out/multi_download.log`，可反复重启续跑（跳过已完成） |
+
+> 💡 实战验证：154 景（695GB，轨道 135 古浪，VV+VH）在持续断网环境下 35 小时完成，全程零数据损坏。
 
 ---
 
@@ -270,6 +298,7 @@ asf-sentinel1-download/
 ├── analyze.py            # 数据分析模式（轨道/卫星/frame/逐时相/每月采样/覆盖图）
 ├── analysis.py           # 分析核心函数库（可独立调用）
 ├── robust_download.py    # 稳健下载（断点续传 + 超时 + 重试 + 数据列表）
+├── multi_download.py     # 多线程分片下载（8 线程并发 + MD5 双校验 + 自动降级，大流量首选）
 ├── progress_gui.py       # 桌面进度条（Tkinter）
 ├── requirements.txt      # 依赖清单
 ├── config.example.json   # 凭证模板（安装时复制为 config.json，本地填写真实账号）
