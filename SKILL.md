@@ -130,6 +130,18 @@ python ~/.pi/agent/skills/asf-sentinel1-download/dem_download.py \
 
 > 依赖：GACOS 需 `pip install playwright && playwright install chromium`；DEM 需 `pip install earthaccess`
 
+## 安装后必做：配置全部账户 🔑
+
+**安装完成后第一件事：按需配置好以下账户**（未配置会认证失败或功能不可用）：
+
+| 账户 | 用途 | 必需？ | 配置方式 |
+|------|------|--------|---------|
+| **NASA Earthdata** | SLC 主数据下载 + DEM 下载 | ✅ 必需 | 对话中说「配置 ASF 账号密码」交互式配置，或编辑 `config.json`（免费注册 https://urs.earthdata.nasa.gov/） |
+| **邮箱（IMAP 授权码）** | GACOS 大气延迟结果收取 | ⚠️ 用 GACOS 时必需 | 任意能收邮件的邮箱（163/QQ），开启 IMAP 生成授权码，写入 `mail.json` |
+| —— | POEORB 精密轨道 | ❌ 免账号 | ESA 公开服务器直接下载 |
+
+> 🔔 对话中对 AI 说 **「配置 ASF 账号密码」** 可引导完成 Earthdata 配置；GACOS 邮箱配置可让 AI 协助生成 `mail.json`。
+
 ## 数据分析（不下载）
 
 下载前可用 `analyze.py` 先分析数据质量：

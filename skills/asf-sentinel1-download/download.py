@@ -16,8 +16,17 @@ import xml.etree.ElementTree as ET
 
 def load_config(path=None):
     p = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json')
+    if not os.path.exists(p):
+        raise FileNotFoundError(
+            '未找到凭证文件 ' + p + '。安装后请先配置 NASA Earthdata 账号：'
+            '在对话中说「配置 ASF 账号密码」，或手动编辑 config.json'
+            '（免费注册 https://urs.earthdata.nasa.gov/）')
     with open(p, 'r', encoding='utf-8') as f:
-        return json.load(f)
+        cfg = json.load(f)
+    if not cfg.get('username') or not cfg.get('password') or cfg['username'].startswith('your_'):
+        raise ValueError(
+            'config.json 仍是模板占位符 (' + p + ')。请填入真实的 NASA Earthdata 账号密码后再运行。')
+    return cfg
 
 
 def parse_polarization(s):
