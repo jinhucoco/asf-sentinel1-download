@@ -132,6 +132,8 @@ python ~/.pi/agent/skills/asf-sentinel1-download/multi_download.py \
 ```
 
 - 8 线程 Range 分片并发（<300MB 自动用 4 片），分片级重试（每片 4 次 + backoff）
+- **自动降级**：多线程连续 2 个文件作废时自动切换单文件模式（写 `<out>/mode.flag`，
+  重启后走单连接整文件下载），网络极差时保底不中断
 - 断点续传：已完成文件跳过；失败分片清理后下次重下
 - `bytes=0-0` 探测真实大小（ASF 的 HEAD 不可靠）
 - 挂机建议：配合守护循环（检测进程死/卡死自动重启），日志在 `--out/multi_download.log`

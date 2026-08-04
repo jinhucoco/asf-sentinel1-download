@@ -95,13 +95,24 @@ def robust_download(product, out_dir, session, progress=None, timeout=DOWNLOAD_T
 
     existing = os.path.getsize(part) if os.path.exists(part) else 0
     headers = {'Range': f'bytes={existing}-'} if existing > 0 else {}
+    # 先探测真实总大小（ASF 的 Content-Length 不可靠，用 bytes=0-0 的 Content-Range 探测）
     total_size = 0
+    try:
+        probe = session.get(url, headers={'Range': 'bytes=0-0'}, timeout=(30, 60))
+        cr = probe.headers.get('Content-Range', '')
+        probe.close()
+        if cr and '/' in cr:
+            total_size = int(cr.split('/')[-1])
+    except Exception:
+        pass
     try:
         with session.get(url, stream=True, timeout=(30, timeout), headers=headers) as resp:
             if resp.status_code not in (200, 206):
                 print(f'[!] {fname} 状态码 {resp.status_code}')
                 return False, existing
-            total_size = existing + int(resp.headers.get('content-length', 0) or 0)
+            if total_size <= 0:
+                # 探测失败时回退到 Content-Length
+                total_size = existing + int(resp.headers.get('content-length', 0) or 0)
             if total_size > MAX_FILE_SIZE:
                 print(f'[!] {fname} 超过大小上限 {MAX_FILE_SIZE//1024**3}GB')
                 return False, existing
