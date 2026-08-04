@@ -20,7 +20,7 @@
 | 🛰️ Sentinel-1 SLC 主数据下载（轨道分组/覆盖校验/多线程） | `download.py` `multi_download.py` `robust_download.py` | ✅ Earthdata |
 | 📡 精密轨道文件 POEORB（与 SLC 时相对应） | `poeorb_download.py` | ❌ 免账号 |
 | 🌤️ GACOS 大气延迟 ztd（时相 + 范围 + UTC 时刻） | `gacos_download.py` `gacos_fetch.py` | ❌ 仅需邮箱收结果 |
-| ⛰️ DEM 30m（NASADEM 官方源，研究区自动分幅） | `dem_download.py` | ✅ Earthdata |
+| ⛰️ DEM 30m（NASADEM 官方源(中国大陆需要走代理)，研究区自动分幅） | `dem_download.py` | ✅ Earthdata |
 
 ---
 
