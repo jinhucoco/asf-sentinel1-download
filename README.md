@@ -337,6 +337,16 @@ asf-sentinel1-download/
 | `export_list` | 清单导出（TXT + CSV） |
 | `plot_coverage` | 研究区 vs 影像覆盖图 |
 
+### 配套数据下载器（SBAS 完整数据链）
+
+| 脚本 | 用途 | 官方源 |
+|------|------|--------|
+| `poeorb_download.py` | 精密轨道（POEORB）| ESA step.esa.int（免认证）|
+| `gacos_download.py` / `gacos_fetch.py` | GACOS 大气延迟 ztd（提交/收件）| gacos.net 表单 + 邮箱结果 |
+| `dem_download.py` | NASADEM 30m DEM | USGS e4ftl01（Earthdata）|
+
+三者均从研究区/下载清单自动推导所需数据（分幅/时相/时刻），详见 SKILL.md「配套数据下载」章节。
+
 ---
 
 ## 🧪 测试（Testing）

@@ -80,6 +80,56 @@ python ~/.pi/agent/skills/asf-sentinel1-download/download.py \
   全部下载
 - **多极化**：`VV+VH` 与 `VV` 分别搜索后合并，清单中标明各文件极化
 
+## 配套数据下载（SBAS 完整数据链）
+
+主数据下载后，可一键获取 InSAR 处理所需的三种配套数据（均为官方源，无需百度网盘）：
+
+### 1. 精密轨道文件（POEORB）
+
+```bash
+python ~/.pi/agent/skills/asf-sentinel1-download/poeorb_download.py \
+  --list 下载清单.csv --out ./poeorb
+# 或扫描 SLC 数据目录：
+python ~/.pi/agent/skills/asf-sentinel1-download/poeorb_download.py \
+  --data-dir ./sentinel1_data --out ./poeorb
+```
+
+- **对应规则**：SLC 获取时刻（UTC）落在 POEORB 文件 validity 区间内（文件名 `_V起_止`）
+- 自动按（卫星, 日期）去重匹配，下载后解压为 `.EOF`；网络失败可重跑补漏（跳过已完成）
+
+### 2. GACOS 大气延迟（ztd）
+
+```bash
+# 提交（每次 ≤20 日期，自动分批；结果邮件发送）
+python ~/.pi/agent/skills/asf-sentinel1-download/gacos_download.py \
+  --bbox "38.34 101.96 103.48 37.28" --list 时相日期.txt \
+  --time 23:10 --email 你的邮箱 --out ./gacos
+
+# 收件（IMAP 读邮箱 → 提取链接 → 下载解压 ztd；指数退避轮询）
+python ~/.pi/agent/skills/asf-sentinel1-download/gacos_fetch.py \
+  --mail-config mail.json --out ./gacos --expect 77 --loop
+```
+
+- 需要：邮箱 IMAP 授权码（163/QQ），UTC 时刻（从 SLC 文件名提取，如 `T231040` → 23:10）
+- 输出 `YYYYMMDD.ztd` 二进制（SARscape/StaMPS 可直接引用）
+- 已知坑：GACOS 偶发漏生成某日期 → 单独重提该日期即可
+
+### 3. DEM（NASADEM 30m 官方源）
+
+```bash
+python ~/.pi/agent/skills/asf-sentinel1-download/dem_download.py \
+  --aoi 研究区.shp --out ./dem
+# 或直接给范围：
+python ~/.pi/agent/skills/asf-sentinel1-download/dem_download.py \
+  --lat 37.3 38.3 --lon 102.0 103.4 --out ./dem
+```
+
+- 自动从研究区推导分幅（如古浪 → n37e102/103 + n38e102/103）
+- 官方源：USGS e4ftl01（NASADEM_HGT 30m，经 Earthdata 认证）
+- 需要 Earthdata 账号（与 ASF 下载同账号），凭证读 config.json 或环境变量
+
+> 依赖：GACOS 需 `pip install playwright && playwright install chromium`；DEM 需 `pip install earthaccess`
+
 ## 数据分析（不下载）
 
 下载前可用 `analyze.py` 先分析数据质量：
