@@ -113,6 +113,30 @@ python ~/.pi/agent/skills/asf-sentinel1-download/robust_download.py \
 - 自动重试：`--retry` 指定次数（默认 10），跳过已完成文件
 - 桌面进度条：默认显示 Tkinter 进度窗口，`--no-gui` 关闭
 
+## 多线程下载（网络慢/量大时首选）
+
+单连接慢时用 `multi_download.py`（8 线程 Range 分片并发，深夜/带宽好时自动提速，
+约 8× 单连接速度）：
+
+```bash
+# 方式1：清单驱动（推荐——先用 analyze.py 生成清单再批量下载，可挂机续跑）
+python ~/.pi/agent/skills/asf-sentinel1-download/analyze.py \
+  --aoi <矢量文件> --start <YYYYMMDD> --end <YYYYMMDD> --pol VV+VH --out <分析目录>
+python ~/.pi/agent/skills/asf-sentinel1-download/multi_download.py \
+  --list <分析目录>/list_DESCENDING_135.csv --out <下载目录> [--threads 8]
+
+# 方式2：搜索驱动（指定轨道直接下载，跳过交互选择）
+python ~/.pi/agent/skills/asf-sentinel1-download/multi_download.py \
+  --aoi <矢量文件> --start <YYYYMMDD> --end <YYYYMMDD> \
+  --pol VV+VH --track 135 --out <下载目录> [--threads 8]
+```
+
+- 8 线程 Range 分片并发（<300MB 自动用 4 片），分片级重试（每片 4 次 + backoff）
+- 断点续传：已完成文件跳过；失败分片清理后下次重下
+- `bytes=0-0` 探测真实大小（ASF 的 HEAD 不可靠）
+- 挂机建议：配合守护循环（检测进程死/卡死自动重启），日志在 `--out/multi_download.log`
+- 适合 SBAS 全量时间序列（几百 GB 量级），耗时由网络决定，勿催
+
 ## 常见错误
 
 | 问题 | 处理 |
