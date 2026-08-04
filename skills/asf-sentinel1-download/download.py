@@ -162,7 +162,8 @@ def kml_to_wkt(kml_path):
         from defusedxml import ElementTree as SafeET
         tree = SafeET.parse(kml_path)
     except ImportError:
-        tree = ET.parse(kml_path)
+        # fail-closed：缺 defusedxml 时报错而非退回不安全的 ElementTree（防 XXE）
+        raise ValueError('缺少 defusedxml（安全 XML 解析库），请执行 pip install defusedxml')
     root = tree.getroot()
 
     # 用本地名匹配，兼容任意命名空间
