@@ -245,6 +245,14 @@ def main():
 
     ok = fail = skip = fail_streak = 0
     completed = True  # 完整跑完清单才写 complete.flag（降级/中断不写）
+    # 新任务开始：清除旧完成标记（守护/遥控据此恢复工作）
+    cf_old = os.path.join(args.out, 'complete.flag')
+    if os.path.exists(cf_old):
+        try:
+            os.remove(cf_old)
+            log(f'[START] 新任务开始，清除旧 complete.flag', logfile)
+        except OSError:
+            pass
     # 下载模式：multi=多线程分片，single=单文件（自动降级后，标记存输出目录）
     with open(os.path.join(args.out, 'mode.flag')) as f:
         mode = 'single' if os.path.exists(os.path.join(args.out, 'mode.flag')) and f.read().strip() == 'single' else 'multi'
