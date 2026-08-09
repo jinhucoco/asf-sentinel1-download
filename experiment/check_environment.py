@@ -193,5 +193,12 @@ elif warns:
     print(' !! 环境可用，但有可选项未就绪（不影响核心链路）')
 else:
     print(' == 环境就绪，可运行全链路自动化 ==')
+    print()
+    print('使用指南（对 AI 说）：')
+    print('  1. 配置凭证:  “配置 ASF 账号密码”')
+    print('  2. 下载数据:  “从 ASF 下载哨兵数据，区域 研究区.shp，时间 YYYYMMDD 至 YYYYMMDD，VV+VH”')
+    print('  3. 配套数据:  “下载配套数据”')
+    print('  4. 开始实验:  “开始 SBAS 实验”')
+    print('  5. 查进度:    “实验进展如何”')
 print('=' * 56)
 sys.exit(1 if fails else 0)
