@@ -51,7 +51,7 @@ print('=' * 56)
 # A1 关键文件
 required = [
     'SKILL.md', 'README.md', 'package.json', 'install.sh',
-    'config.example.json', 'requirements.txt',
+    'config.example.json', 'scripts/requirements.txt',
     'scripts/download.py', 'scripts/analysis.py', 'scripts/multi_download.py',
     'experiment/config.example.env', 'experiment/config_loader.py',
     'experiment/check_environment.py', 'experiment/README.md',
