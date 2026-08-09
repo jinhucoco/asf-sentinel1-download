@@ -64,7 +64,7 @@ experiment/
 │   ├── 02_interferogram/             干涉图生成（第 2 步）
 │   └── 03_data_prep/                 GACOS 导入 / DEM 提取 / geoid / 数据导入
 ├── asf_experiment/sbas_guard.py      守护（自动体检 + 微信/邮件）
-├── scripts/plot_connection_graph.py  连接图绘制
+├── tools/plot_connection_graph.py  连接图绘制
 ├── 配套数据/                          GACOS 提交/收件、POEORB、DEM 工具
 └── sar/dem/*.sml                     研究区 DEM 配置
 ```
