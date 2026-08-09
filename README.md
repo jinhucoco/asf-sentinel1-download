@@ -86,72 +86,98 @@ AI 自动: 搜索/分组/      →      对话说"下载配套数据"   →     
 
 ## ⚡ 快速开始（全新用户）
 
+**分两阶段：一次性环境准备 + 日常 AI 对话使用**。环境准备需要手动执行（AI 无法替你装软件），之后的一切操作都在 AI 对话中完成。
+
+### 阶段 A：环境准备（一次性，约 10 分钟）
+
 ```bash
 # 1. 拉取代码
-git clone --branch dev https://github.com/jinhucoco/asf-sentinel1-download.git
+ git clone --branch dev https://github.com/jinhucoco/asf-sentinel1-download.git
 cd asf-sentinel1-download
 
 # 2. 安装 Python 依赖
 pip install -r scripts/requirements.txt
 
-# 3. 配置路径（复制模板并按本机修改）
+# 3. 安装为 AI 技能（核心：让 AI 能对话触发）
+curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
+
+# 4. 配置路径（复制模板并按本机修改）
 copy experiment\config.example.env experiment\config.env
 #   编辑 config.env：工作目录 / SLC 数据 / 输出盘 / DEM / GACOS / ENVI+SARscape 路径
 
-# 4. 环境自检（27 项）——全部 [OK] 再继续
+# 5. 环境自检（27 项）——全部 [OK] 再继续（可让 AI 协助诊断 FAIL）
 python experiment\check_environment.py
-
-# 5. 全链路验证（34 项）——全部通过即可使用
-python scripts\verify_clone.py
-
-# 6. 安装为 AI 技能（可选，对话式使用需要）
-curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
-#   然后在 AI 对话中说"配置 ASF 账号密码"，再"从 ASF 下载哨兵数据..."
 ```
+
+### 阶段 B：日常使用（全部在 AI 对话中）
+
+```
+你: “配置 ASF 账号密码”        → AI 引导输入 Earthdata 凭证
+你: “从 ASF 下载哨兵数据，区域 研究区.shp，时间 20240101 至 20240630，VV+VH”
+                              → AI 自动搜索/校验/确认/下载
+你: “下载配套数据”            → AI 获取 POEORB/GACOS/DEM
+你: “开始 SBAS 实验”          → AI 列参数表 → 你确认 → AI 跑批处理
+你: “实验进展如何”            → AI 查守护日志汇报
+```
+
+> 验证：`python scripts/verify_clone.py`（34 项）可在 AI 协助下跑，确保仓库/环境就绪。
 
 ---
 
-## 🚀 深入使用
+## 🚀 深入使用（全部环节：对话优先）
+
+> 每个环节都是 **「你说 → AI 自动做」**；命令行仅作高级/调试用（AI 也可帮你敲）。
 
 ### ① 下载 S1 SLC 数据
 
-**AI 方式**（推荐）：
-> "从 ASF 下载哨兵数据，区域 研究区.shp，时间 20200101 至 20251231，VV+VH"
+**对话方式**（推荐）：
 
-**命令行方式**（手动，不用 AI 对话时）：
-
-```bash
-# 先分析数据质量（轨道/卫星/frame 覆盖/逐时相/覆盖图/清单）
-python scripts\analyze.py --aoi 研究区.kml --start 20200101 --end 20251231 \
-  --pol VV+VH --out ./analysis --sample --plot
-
-# 稳健下载（断点续传 + 超时 + 重试）
-python scripts\robust_download.py --aoi 研究区.kml --start 20240101 --end 20240630 \
-  --pol VV+VH --out ./sentinel1_data
-
-# 大流量/慢网络首选（多线程分片约 8× 提速）
-python scripts\multi_download.py --list ./analysis/list_DESCENDING_135.csv \
-  --out ./sentinel1_data
+```
+你: “从 ASF 下载哨兵数据，区域 研究区.shp，时间 20200101 至 20251231，VV+VH”
+AI: ① Earthdata 认证 → ② AOI 转 WKT → ③ 逐极化搜索 → ④ (方向,轨道)分组
+    → ⑤ 覆盖校验（只保留全覆盖轨道组）→ ⑥ 列清单给你确认 → ⑦ 批量下载 → ⑧ 汇报
 ```
 
-> 下载保证：同一相对轨道 + 同一方向 + 每个时相全覆盖研究区 + 轨道一致性校验。
+下载保证（AI 自动执行，无需你关心）：同一相对轨道 + 同一方向 + 每个时相全覆盖研究区 + 轨道一致性校验。
+
+**命令方式**（高级/调试，AI 可代敲）：
+
+```bash
+python scripts\analyze.py --aoi 研究区.kml --start 20200101 --end 20251231 --pol VV+VH --out ./analysis --sample --plot
+python scripts\robust_download.py --aoi 研究区.kml --start 20240101 --end 20240630 --pol VV+VH --out ./sentinel1_data
+python scripts\multi_download.py --list ./analysis/list_DESCENDING_135.csv --out ./sentinel1_data
+```
 
 ### ② 获取配套数据
 
+**对话方式**（推荐）：
+
+```
+你: “下载配套数据”（或分别说“下载 POEORB / GACOS / DEM”）
+AI: 自动按研究区获取——POEORB 精密轨道（免账号）、GACOS 大气延迟（提交→收邮件→下载 ztd）、NASADEM 30m（自动分幅）
+```
+
+**命令方式**（高级/调试）：
+
 ```bash
-# POEORB 精密轨道（免账号）
 python scripts\poeorb_download.py --data-dir ./sentinel1_data --out ./poeorb
-
-# GACOS 大气延迟（提交 → 邮件收结果 → 自动下载 ztd）
-python scripts\gacos_download.py --bbox "38.34 101.96 103.48 37.28" \
-  --list 时相日期.txt --time 23:10 --email 你的邮箱 --out ./gacos
+python scripts\gacos_download.py --bbox "38.34 101.96 103.48 37.28" --list 时相日期.txt --time 23:10 --email 你的邮箱 --out ./gacos
 python scripts\gacos_fetch.py --mail-config mail.json --out ./gacos --expect 77 --loop
-
-# NASADEM 30m（研究区自动分幅）
 python scripts\dem_download.py --aoi 研究区.shp --out ./dem
 ```
 
-### ③ SARscape 批处理（experiment/bat/，需 ENVI+SARscape）
+### ③ SARscape 批处理（需 ENVI+SARscape）
+
+**对话方式**（推荐）：
+
+```
+你: “开始 SBAS 实验” / “开始第 1 步”
+AI: ① 识别研究区地形 → ② 列该步参数表（含原理）→ ③ 你确认/调整 → ④ 执行 bat → ⑤ 汇报
+```
+
+> 每步执行前 AI 都会先列参数确认（见 SKILL.md「实验参数设置提醒机制」），不盲跑默认值。
+
+**命令方式**（高级）：
 
 ```bash
 experiment\bat\01_connection_graph\run_cg_final.bat   # 连接图（第 1 步）
@@ -159,22 +185,40 @@ experiment\bat\02_interferogram\run_interf.bat        # 干涉图生成（第 2 
 # 反演 ×2 + 地理编码（第 3-5 步 bat 待补，参数已定）
 ```
 
-> 所有 bat 从 `config.env` 读路径，**无硬编码**；分类存放：`01_connection_graph` / `02_interferogram` / `03_data_prep`。
+> 所有 bat 从 `config.env` 读路径，**零硬编码**；分类存放 `01_connection_graph` / `02_interferogram` / `03_data_prep`。
 
-### ④ 守护监控（experiment/asf_experiment/）
+### ④ 守护监控
+
+**对话方式**（推荐）：
+
+```
+你: “开始监控”           → AI 部署守护并启动（整目录复制到 WORK_DIR/ + python -u sbas_guard.py）
+你: “实验进展如何”       → AI 查守护日志汇报（进度/磁盘/异常）
+你: “跑完没/有没有异常”  → AI 读体检记录回答
+```
+
+**命令方式**（高级）：
 
 ```bash
 cp -r experiment/asf_experiment D:/work/data/
-cd D:/work/data/asf_experiment
-python -u sbas_guard.py
+cd D:/work/data/asf_experiment && python -u sbas_guard.py
 ```
 
-守护能力：30 分钟自动体检（日志 + 邮件）+ 微信推送（完成/异常/日汇总）+ 进程崩溃自动重启 + 磁盘/停滞预警。Server酱 5 条/天额度内只推关键事件。
+守护能力：30 分钟自动体检 + 微信（Server酱）/邮件汇报 + 崩溃自动重启 + 磁盘/停滞预警（5 条/天额度内只推关键事件）。
 
 ### ⑤ 环境自检与验证
 
+**对话方式**（推荐）：
+
+```
+你: “检查环境” → AI 跑 check_environment.py，有 [FAIL] 按提示修复后重跑
+你: “验证仓库” → AI 跑 verify_clone.py，34 项全过即可使用
+```
+
+**命令方式**（高级）：
+
 ```bash
-python experiment\check_environment.py   # 27 项环境检查（别人机器配置好后先跑）
+python experiment\check_environment.py   # 27 项环境检查
 python scripts\verify_clone.py           # 34 项仓库/代码/工具验证
 ```
 
