@@ -81,7 +81,7 @@ AI 自动: 搜索/分组/      →      对话说"下载配套数据"   →     
                                                         →      干涉图生成              →     磁盘预警
                                                         →      (bat/02_interferogram)   →     AI 随时查进度
                                                         →      反演 ×2 + 地理编码
-                                                        →      (bat/03_* 待补)
+                                                        →      (bat/03_inversion, 04_geocode)
 ```
 
 - **① ② 由 AI 技能自动完成**（对话即用，不需要命令行）
@@ -283,8 +283,8 @@ python scripts/verify_clone.py      # 34 项全链路验证（全新用户视角
 
 ## ⚠️ 已知限制（Known Limitations）
 
-- **第 0 步 SLC 导入 bat 待补**：当前用 SARscape GUI 手动导入（77 景），自动化 bat 未写（见待办）
-- **第 3-5 步 bat 待补**：反演 ×2 + 地理编码的批处理未生成（参数已定，实验进行中）
+- **第 0 步 SLC 导入 bat（框架已建，参数待提取）**：`bat/00_import/run_import_slc.bat` 结构就绪，需从 SARscape 导入向导提取实际参数后启用（当前 GUI 手动导入 77 景）
+- **第 3-5 步 bat（框架已建，参数名待验证）**：`bat/03_inversion/run_inv1.bat`、`run_inv2.bat`、`bat/04_geocode/run_geocode.bat`——参数值已按交接文档三十章设定（linear/0.2/MCF/等级2/大气LP1200m HP365天/30m网格），**参数名按 run_interf 风格推断，执行前需用 VERIFY 输出校验**（实验进行中，跑到时验证）
 - **ENVI/SARscape 为商业软件**：需自己的 license，代码无法替代
 - **仓库名暂未改**：当前为 asf-sentinel1-download，全链路化后计划更名
 - **GACOS 依赖邮箱**：需 IMAP 授权码，偶发漏生成某日期需单独重提
