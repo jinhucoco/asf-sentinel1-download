@@ -1,0 +1,6 @@
+# npm 打包排除（files 白名单内的 scripts/ 不会自动应用 .gitignore）
+config.json
+__pycache__/
+*.pyc
+.pytest_cache/
+*.part

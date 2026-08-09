@@ -14,6 +14,9 @@
   ],
   "author": "jinhucoco",
   "license": "MIT",
+  "scripts": {
+    "prepack": "node -e \"const fs=require('fs');['scripts/__pycache__','skills/asf-sentinel1-download/scripts/__pycache__'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\""
+  },
   "homepage": "https://github.com/jinhucoco/asf-sentinel1-download",
   "repository": {
     "type": "git",
