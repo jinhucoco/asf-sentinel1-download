@@ -9,6 +9,31 @@
 
 ---
 
+## 🌟 核心能力
+
+| 阶段 | 能力 |
+|---|---|
+| **AI 数据下载** | 对话触发、同轨同向、逐时相全覆盖校验、轨道一致性、多线程分片（8×）、断点续传、多极化 |
+| **AI 配套数据** | POEORB / GACOS（邮件自动收件）/ NASADEM 30m——全部官方源 |
+| **AI-InSAR 处理** | 对话说"开始实验" → AI 识别地形、列参数表逐项确认 → 执行 SARscape 五步 bat（连接图→干涉→反演×2→地理编码）→ 汇报；零硬编码（config.env）|
+| **AI 守护监控** | AI 部署守护、自动体检、微信（Server酱）+ 邮件、崩溃自动重启、磁盘/停滞预警；用户随时问进展 AI 查日志回答 |
+| **AI 可移植** | 对话说"检查环境"→ AI 跑自检（27 项）并修复；"验证仓库"→ AI 跑全链路验证（34 项）|
+
+---
+
+## 📦 前置条件（Prerequisites）
+
+| 依赖 | 必需？ | 说明 |
+|---|---|---|
+| **Python 3.10+** | ✅ | `pip install -r scripts/requirements.txt` |
+| **ENVI + SARscape** | 处理阶段 ✅ | 商业软件，需自己的 license（下载/配套数据不需要）|
+| **NASA Earthdata 账号** | ✅ | 免费注册，AI 对话中说"配置 ASF 账号密码" |
+| **SLC 数据** | ✅ | AI 技能自动从 ASF 下载 |
+| **GACOS/DEM/POEORB** | ✅ | AI 技能自动获取 |
+| **通知凭证** | 可选 | Server酱 SendKey、SMTP 授权码（守护汇报用）|
+
+---
+
 ## 🤖 AI 技能使用（核心方式）
 
 ### 安装与快速开始
@@ -34,31 +59,6 @@ curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/ma
 ```
 
 > 环境验证：对 AI 说「验证仓库」，AI 跑 34 项全链路验证确保就绪。
-
----
-
-## 🌟 核心能力
-
-| 阶段 | 能力 |
-|---|---|
-| **AI 数据下载** | 对话触发、同轨同向、逐时相全覆盖校验、轨道一致性、多线程分片（8×）、断点续传、多极化 |
-| **AI 配套数据** | POEORB / GACOS（邮件自动收件）/ NASADEM 30m——全部官方源 |
-| **AI-InSAR 处理** | 对话说"开始实验" → AI 识别地形、列参数表逐项确认 → 执行 SARscape 五步 bat（连接图→干涉→反演×2→地理编码）→ 汇报；零硬编码（config.env）|
-| **AI 守护监控** | AI 部署守护、自动体检、微信（Server酱）+ 邮件、崩溃自动重启、磁盘/停滞预警；用户随时问进展 AI 查日志回答 |
-| **AI 可移植** | 对话说"检查环境"→ AI 跑自检（27 项）并修复；"验证仓库"→ AI 跑全链路验证（34 项）|
-
----
-
-## 📦 前置条件（Prerequisites）
-
-| 依赖 | 必需？ | 说明 |
-|---|---|---|
-| **Python 3.10+** | ✅ | `pip install -r scripts/requirements.txt` |
-| **ENVI + SARscape** | 处理阶段 ✅ | 商业软件，需自己的 license（下载/配套数据不需要）|
-| **NASA Earthdata 账号** | ✅ | 免费注册，AI 对话中说"配置 ASF 账号密码" |
-| **SLC 数据** | ✅ | AI 技能自动从 ASF 下载 |
-| **GACOS/DEM/POEORB** | ✅ | AI 技能自动获取 |
-| **通知凭证** | 可选 | Server酱 SendKey、SMTP 授权码（守护汇报用）|
 
 ---
 
