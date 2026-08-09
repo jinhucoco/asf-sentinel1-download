@@ -1,7 +1,7 @@
 {
   "name": "pi-asf-sentinel1-slc",
   "version": "1.3.0",
-  "description": "Pi skill: automatically download Sentinel-1 SLC IW data from ASF for SBAS-InSAR experiments. Same-track, same-direction, per-date full-coverage guarantees.",
+  "description": "Pi skill: SBAS-InSAR full-chain automation - AI-driven Sentinel-1 SLC download, companion data (POEORB/GACOS/DEM), SARscape batch processing, and guardian monitoring. Dialogue-triggered, same-track coverage-guaranteed downloads.",
   "keywords": [
     "pi-package",
     "pi-skill",

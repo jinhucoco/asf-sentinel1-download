@@ -1,22 +1,24 @@
 ---
 name: asf-sentinel1-download
 description: >
-  从 ASF (Alaska Satellite Facility) 网站自动下载 Sentinel-1 数据。
-  当用户提供时间范围 + shp/kml 矢量文件 + 网页参数（SLC/IW/极化），
-  需要批量下载哨兵一号影像时使用。触发词："从ASF下载哨兵数据"、
-  "下载Sentinel-1"、"ASF下载S1"。
+  SBAS-InSAR 全链路 AI 技能：从 Sentinel-1 数据下载、配套数据（DEM/GACOS/POEORB）
+  获取，到 SARscape 实验参数确认与批处理执行，再到守护监控，全程 AI 与用户对话交互、
+  AI 自动执行。用户只需说出需求（提供时间范围 + shp/kml 矢量 + 极化），AI 自动完成。
+  触发词：“从ASF下载哨兵数据”、“下载Sentinel-1”、“ASF下载S1”、“开始SBAS实验”、
+  “跑SBAS”、“参数怎么设”、“实验进展如何”。
 ---
 
-# ASF Sentinel-1 数据下载
+# SBAS-InSAR 全链路 AI 技能
 
-## 概述
+## 定位（AI 交互执行原则）
 
-用户提供时间范围、矢量文件（shp/kml）、参数后，使用 ASF 官方搜索库
-(asf_search) 自动完成：Earthdata 认证（凭证存本目录 config.json）、
-AOI 矢量转 WKT、逐极化搜索（默认 VV+VH 与 VV 一起）并合并，
-按 (飞行方向, 相对轨道) 分组并统计各轨道景数展示给用户选择，
-自动过滤完全覆盖研究区的轨道组，列出清单等待确认、批量下载。
-基于官方 API，稳定可靠。
+**本技能的一切工具（scripts/ 下载工具、experiment/ 批处理与守护）都是为 AI 与用户
+对话交互服务的**：用户用自然语言提出需求，AI 调用工具自动执行并汇报，用户无需手动
+敲命令。AI 是执行主体，工具是 AI 的“手”。
+
+```
+用户对话 ──▶ AI（读取本 SKILL.md）──▶ 调用 scripts/experiment 工具 ──▶ 执行 ──▶ 汇报
+```
 
 ## 环境要求
 
@@ -220,6 +222,8 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 根据研究区**地形和位置**列出每一步的可调参数（不是只给默认值），
 说明每个参数的**原理和适用场景**，**逐项询问用户意见**，用户确认后再执行。
 
+> 💡 用户只需对话确认，AI 负责生成参数表、解释原理、执行批处理、汇报结果。
+
 ### 触发时机（用户说这些就启动参数确认流程）
 
 - 「开始做实验」「跑 SBAS」「参数怎么设」「开始处理」
@@ -296,3 +300,43 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 ```
 
 > 💡 此机制的目的是：**先确认再执行**，避免跑完几小时发现参数不对重跑。
+
+## 实验批处理执行（AI 自动运行 bat）
+
+参数确认后，AI 按步骤执行 SARscape 批处理（`experiment/bat/`，路径已从 config.env 读取，零硬编码）：
+
+| 步骤 | bat | 触发对话 |
+|------|-----|---------|
+| 第 1 步 连接图 | `experiment/bat/01_connection_graph/run_cg_final.bat` | 「开始第 1 步」 |
+| 第 2 步 干涉图 | `experiment/bat/02_interferogram/run_interf.bat` | 「开始第 2 步」 |
+| 第 3-5 步 反演/编码 | （待补，参数已定）| 「继续实验」 |
+
+AI 执行要点：
+- 每个 bat 从 `config.env` 读路径（若未配置先提示 `copy config.example.env config.env`）
+- 执行前检查环境：`python experiment/check_environment.py` 全部 [OK]
+- 长任务后台执行，向用户说明预计时长，期间定期查进度（守护日志）
+- 完成/失败均汇报，异常引导用户决策
+
+## 守护监控交互（AI 查实验状态）
+
+实验运行期间由守护 `experiment/asf_experiment/sbas_guard.py` 自动监控（30 分钟体检 + 微信/邮件）。
+用户问「实验进展如何」「跑完没」「有没有异常」时，AI 查看守护日志汇报：
+
+```bash
+tail experiment/asf_experiment/sbas_guard.log   # 体检记录（进度/磁盘/异常）
+```
+
+- 进度：`Interf generation [R_x]-[S_y] Progress [NN%]`
+- 异常：崩溃/停滞/磁盘不足会记录并已自动重启/告警
+- 推送策略：Server酱 5 条/天额度只推关键事件（完成/异常/日汇总/启动）
+
+## 环境自检与全新用户验证（AI 协助）
+
+新环境（或用户换了机器）时，AI 协助完成：
+
+```bash
+python experiment/check_environment.py   # 27 项：config/依赖/路径/软件/磁盘
+python scripts/verify_clone.py           # 34 项：仓库完整性/代码健康/工具可运行
+```
+
+任一项 [FAIL]，AI 按提示修复并重新验证；全部 [OK] 才继续实验。
