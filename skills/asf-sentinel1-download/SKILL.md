@@ -349,8 +349,10 @@ tail experiment/asf_experiment/sbas_guard.log   # 体检记录（进度/磁盘/�
 新环境（或用户换了机器）时，AI 协助完成：
 
 ```bash
-python experiment/check_environment.py   # 27 项：config/依赖/路径/软件/磁盘
-python scripts/verify_clone.py           # 34 项：仓库完整性/代码健康/工具可运行
+python experiment/setup_env.py            # 配置向导：自动探测 ENVI/SARscape/数据盘，逐项确认，生成 config.env
+python experiment/check_environment.py    # 27 项：config/依赖/路径/软件/磁盘
+python scripts/verify_clone.py            # 34 项：仓库完整性/代码健康/工具可运行
 ```
 
-任一项 [FAIL]，AI 按提示修复并重新验证；全部 [OK] 才继续实验。
+- 用户说「帮我配置环境」→ AI 运行 setup_env.py 向导（探测 + 确认）→ 生成 config.env
+- 任一项 [FAIL]，AI 按提示修复并重新验证；全部 [OK] 才继续实验

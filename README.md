@@ -117,24 +117,36 @@ AI 自动: 搜索/分组/      →      对话说"下载配套数据"   →     
 
 **分两阶段：一次性环境准备 + 日常 AI 对话使用**。环境准备需要手动执行（AI 无法替你装软件），之后的一切操作都在 AI 对话中完成。
 
-### 阶段 A：环境准备（一次性，约 10 分钟）
+### 阶段 A：环境准备（一次性，AI-Agent 帮你配置）
+
+> 环境准备也能让 AI 完成：拉代码、装依赖、配路径、自检——你只需回答 AI 的提问（路径/账号）。
+
+**AI 方式**（推荐）：
+
+```
+你: 帮我配置环境
+AI: ① 拉取代码（git clone）→ ② 安装 Python 依赖 → ③ 运行 setup_env.py 配置向导
+      （自动探测 ENVI/SARscape/数据盘，逐项确认）→ ④ 生成 config.env → ⑤ 跑环境自检
+    需要你提供的：研究区数据盘位置、SLC 数据目录（如有）、ENVI 安装路径（探测不到时）
+你: （按 AI 提问逐项回答）
+AI: 自检 27 项全 [OK] → 环境就绪 ✅
+```
+
+**手动方式**（AI 不可用时）：
 
 ```bash
 # 1. 拉取代码
- git clone --branch dev https://github.com/jinhucoco/asf-sentinel1-download.git
+git clone --branch dev https://github.com/jinhucoco/asf-sentinel1-download.git
 cd asf-sentinel1-download
 
 # 2. 安装 Python 依赖
 pip install -r scripts/requirements.txt
 
-# 3. 安装为 AI 技能（核心：让 AI 能对话触发）
-curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
+# 3. 配置路径（交互式向导：自动探测 + 逐项确认）
+python experiment\setup_env.py
+#    或 --auto 全自动探测写入；再手动编辑 experiment\config.env
 
-# 4. 配置路径（复制模板并按本机修改）
-copy experiment\config.example.env experiment\config.env
-#   编辑 config.env：工作目录 / SLC 数据 / 输出盘 / DEM / GACOS / ENVI+SARscape 路径
-
-# 5. 环境自检（27 项）——全部 [OK] 再继续（可让 AI 协助诊断 FAIL）
+# 4. 环境自检（27 项）——全部 [OK] 再继续
 python experiment\check_environment.py
 ```
 
