@@ -1,42 +1,73 @@
-# SBAS-InSAR 全链路自动化
+# SBAS-InSAR 全链路自动化（AI 技能）
 
-从 **Sentinel-1 数据下载 → 配套数据（DEM/GACOS/POEORB）→ SARscape 批处理 → 形变监测 → 守护监控** 的完整自动化方案。
+**一个给 AI 工具（pi / Codex / Claude Code / Cursor）用的技能 + 实验全链路流水线**：
+在对话里说出需求，AI 自动从 ASF 下载 Sentinel-1 数据、获取配套数据（DEM/GACOS/POEORB）、
+配合 SARscape 批处理完成 SBAS-InSAR 全流程，并有守护进程全程自动监控汇报。
 
-> 单一仓库管理全链路代码：数据下载工具（`scripts/`）+ 实验处理（`experiment/`）+ 环境自检 + 守护。
+> 仓库结构：`SKILL.md`（AI 技能定义）+ `scripts/`（下载/配套工具）+ `experiment/`（SARscape 批处理 + 守护）+ 环境自检 + 验证脚本。
 > 遵循 `dev` 分支开发 → 测试 → 合并 `main` 的工作流。
 
 ---
 
-## 🔗 全链路总览
+## 🤖 AI 技能使用（核心方式）
 
-```
-① 数据下载                   ② 数据准备               ③ SARscape 处理             ④ 监控
-──────────────              ──────────────           ──────────────────         ──────────
-SLC 主数据 (scripts/)   →    POEORB (scripts/)   →    Import SLC            →    守护监控
-download.py                   poeorb_download.py      (bat/00_import 待补)      (asf_experiment/
-multi_download.py       →    GACOS  (scripts/)   →    连接图                    sbas_guard.py)
-robust_download.py            gacos_download.py       (bat/01_connection_graph)  自动体检
-analyze.py / analysis.py      gacos_fetch.py     →    干涉图生成                微信/邮件告警
-                    →        DEM    (scripts/)   →    (bat/02_interferogram)    异常自动重启
-                              dem_download.py    →    反演 1/2 + 地理编码
-                                                     (bat/03_* 待补)
+### 安装到 AI 工具
+
+```bash
+# Pi 用户（自动注册为 pi 技能）
+pi install npm:pi-asf-sentinel1-slc
+
+# 其他 AI 工具（Codex / Claude Code / Cursor / pi）
+curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
+# 脚本自动：检测工具 → 安装到对应技能目录 → 装依赖 → 生成凭证模板
 ```
 
-- **下载工具**（`scripts/`）：所有用户都能用，不需要 ENVI
-- **实验处理**（`experiment/`）：需要 ENVI + SARscape license
-- **守护**（`experiment/asf_experiment/`）：全程自动监控，微信/邮件推送
+> ⚠️ **装好后记得配置账号密码**：在 AI 对话中说 **"配置 ASF 账号密码"**，AI 引导你输入并保存到 `config.json`。
+> 💡 Codex 沙箱用户：默认关闭网络 + HOME 只读，请在**宿主终端**跑安装，或浏览器下载 zip 手动解压。
+
+### 对话式使用（AI 自动执行）
+
+| 你说 | AI 做什么 |
+|---|---|
+| "**从 ASF 下载哨兵数据**，区域 研究区.shp，时间 20240101 至 20240630，VV+VH" | Earthdata 认证 → AOI 转 WKT → 逐极化搜索 → (方向,轨道)分组 → 覆盖校验 → 清单确认 → 批量下载 |
+| "**配置 ASF 账号密码**" | 引导输入 Earthdata 凭证，写入 config.json |
+| "**分析这批数据质量**" | 轨道/卫星/frame 覆盖、逐时相检查、覆盖图、生成清单 |
+| "**下载配套数据**（POEORB / GACOS / DEM）" | 按研究区自动获取精密轨道、大气延迟、30m DEM |
+
+**技能触发词**（SKILL.md 定义）："从ASF下载哨兵数据"、"下载Sentinel-1"、"ASF下载S1"。
 
 ---
 
-## 🌟 核心特性
+## 🔗 全链路总览（AI + 批处理）
+
+```
+① 数据下载（AI 技能）          ② 数据准备（AI 技能）       ③ SARscape 处理（bat）        ④ 监控（守护）
+────────────────────          ────────────────────        ──────────────────────      ────────────
+对话说"下载哨兵数据"    →      POEORB/GACOS/DEM      →      Import SLC                →    sbas_guard.py
+AI 自动: 搜索/分组/      →      对话说"下载配套数据"   →      (bat/00_import 待补)        自动体检 30 分钟
+覆盖校验/清单/下载             AI 自动获取             →      连接图                    →    微信 + 邮件
+                    →                                  →      (bat/01_connection_graph)   异常自动重启
+                                                        →      干涉图生成               →    磁盘预警
+                                                        →      (bat/02_interferogram)
+                                                        →      反演 ×2 + 地理编码
+                                                        →      (bat/03_* 待补)
+```
+
+- **① ② 由 AI 技能自动完成**（对话即用，不需要命令行）
+- **③ 用 `experiment/bat/` 批处理**（需 ENVI+SARscape，路径全配置化）
+- **④ 守护全程监控**（无需人工盯）
+
+---
+
+## 🌟 核心能力
 
 | 阶段 | 能力 |
 |---|---|
-| **数据下载** | 同轨同向、逐时相全覆盖校验、轨道一致性校验、多线程分片（8× 提速）、断点续传、多极化 |
-| **配套数据** | POEORB 精密轨道 / GACOS 大气延迟（邮件自动收件）/ NASADEM 30m——全部官方源 |
-| **批处理** | SARscape 五步批处理 bat（连接图 → 干涉 → 反演 ×2 → 地理编码），路径全配置化 |
-| **守护监控** | 30 分钟自动体检、微信（Server酱）+ 邮件汇报、进程崩溃/停滞自动重启、磁盘预警 |
-| **可移植** | 零硬编码路径（`config.env`）、环境自检 27 项、全新用户验证脚本 |
+| **AI 数据下载** | 对话触发、同轨同向、逐时相全覆盖校验、轨道一致性、多线程分片（8×）、断点续传、多极化 |
+| **AI 配套数据** | POEORB / GACOS（邮件自动收件）/ NASADEM 30m——全部官方源 |
+| **批处理** | SARscape 五步 bat（连接图→干涉→反演×2→地理编码），零硬编码（config.env）|
+| **守护监控** | 自动体检、微信（Server酱）+ 邮件、崩溃自动重启、磁盘/停滞预警 |
+| **可移植** | 环境自检 27 项、全新用户验证 34 项，别人 clone 配置即用 |
 
 ---
 
@@ -45,9 +76,10 @@ analyze.py / analysis.py      gacos_fetch.py     →    干涉图生成         
 | 依赖 | 必需？ | 说明 |
 |---|---|---|
 | **Python 3.10+** | ✅ | `pip install -r scripts/requirements.txt` |
-| **ENVI + SARscape** | 处理阶段 ✅ | 商业软件，需自己的 license（下载工具不需要）|
-| **SLC 数据** | ✅ | 用本仓库工具从 ASF 下载（需 Earthdata 账号）|
-| **GACOS/DEM/POEORB** | ✅ | 用本仓库配套工具获取 |
+| **ENVI + SARscape** | 处理阶段 ✅ | 商业软件，需自己的 license（下载/配套数据不需要）|
+| **NASA Earthdata 账号** | ✅ | 免费注册，AI 对话中说"配置 ASF 账号密码" |
+| **SLC 数据** | ✅ | AI 技能自动从 ASF 下载 |
+| **GACOS/DEM/POEORB** | ✅ | AI 技能自动获取 |
 | **通知凭证** | 可选 | Server酱 SendKey、SMTP 授权码（守护汇报用）|
 
 ---
@@ -66,18 +98,27 @@ pip install -r scripts/requirements.txt
 copy experiment\config.example.env experiment\config.env
 #   编辑 config.env：工作目录 / SLC 数据 / 输出盘 / DEM / GACOS / ENVI+SARscape 路径
 
-# 4. 环境自检（27 项：配置/依赖/路径/软件/磁盘）——全部 [OK] 再继续
+# 4. 环境自检（27 项）——全部 [OK] 再继续
 python experiment\check_environment.py
 
-# 5. 全链路验证（34 项：仓库完整性/代码健康/工具可运行）——全部通过即可使用
+# 5. 全链路验证（34 项）——全部通过即可使用
 python scripts\verify_clone.py
+
+# 6. 安装为 AI 技能（可选，对话式使用需要）
+curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
+#   然后在 AI 对话中说"配置 ASF 账号密码"，再"从 ASF 下载哨兵数据..."
 ```
 
 ---
 
-## 🚀 使用（按全链路阶段）
+## 🚀 深入使用
 
-### ① 下载 S1 SLC 数据（scripts/）
+### ① 下载 S1 SLC 数据
+
+**AI 方式**（推荐）：
+> "从 ASF 下载哨兵数据，区域 研究区.shp，时间 20200101 至 20251231，VV+VH"
+
+**命令行方式**（手动，不用 AI 对话时）：
 
 ```bash
 # 先分析数据质量（轨道/卫星/frame 覆盖/逐时相/覆盖图/清单）
@@ -91,14 +132,11 @@ python scripts\robust_download.py --aoi 研究区.kml --start 20240101 --end 202
 # 大流量/慢网络首选（多线程分片约 8× 提速）
 python scripts\multi_download.py --list ./analysis/list_DESCENDING_135.csv \
   --out ./sentinel1_data
-
-# 对话式（AI 工具内）：
-#   "从 ASF 下载哨兵数据，区域 研究区.shp，时间 20240101 至 20240630，VV+VH"
 ```
 
 > 下载保证：同一相对轨道 + 同一方向 + 每个时相全覆盖研究区 + 轨道一致性校验。
 
-### ② 获取配套数据（scripts/）
+### ② 获取配套数据
 
 ```bash
 # POEORB 精密轨道（免账号）
@@ -116,7 +154,6 @@ python scripts\dem_download.py --aoi 研究区.shp --out ./dem
 ### ③ SARscape 批处理（experiment/bat/，需 ENVI+SARscape）
 
 ```bash
-# 按步骤执行（路径已从 config.env 读取，无需改代码）
 experiment\bat\01_connection_graph\run_cg_final.bat   # 连接图（第 1 步）
 experiment\bat\02_interferogram\run_interf.bat        # 干涉图生成（第 2 步）
 # 反演 ×2 + 地理编码（第 3-5 步 bat 待补，参数已定）
@@ -127,13 +164,12 @@ experiment\bat\02_interferogram\run_interf.bat        # 干涉图生成（第 2 
 ### ④ 守护监控（experiment/asf_experiment/）
 
 ```bash
-# 部署到运行目录（版本源路径 = 运行路径，整目录复制）
 cp -r experiment/asf_experiment D:/work/data/
 cd D:/work/data/asf_experiment
 python -u sbas_guard.py
 ```
 
-守护能力：30 分钟自动体检（日志 + 邮件）+ 微信推送（完成/异常/日汇总）+ 进程崩溃自动重启 + 磁盘/停滞预警。推送策略：Server酱 5 条/天额度内只推关键事件。
+守护能力：30 分钟自动体检（日志 + 邮件）+ 微信推送（完成/异常/日汇总）+ 进程崩溃自动重启 + 磁盘/停滞预警。Server酱 5 条/天额度内只推关键事件。
 
 ### ⑤ 环境自检与验证
 
@@ -148,32 +184,33 @@ python scripts\verify_clone.py           # 34 项仓库/代码/工具验证
 
 ```
 asf-sentinel1-download/
-├── scripts/                      # 数据下载工具（npm 发布单元）
-│   ├── download.py               # 主下载（搜索/分组/覆盖/校验/下载）
-│   ├── analyze.py / analysis.py  # 数据质量分析与清单
-│   ├── multi_download.py         # 多线程分片下载
-│   ├── robust_download.py        # 稳健下载（断点续传）
+├── SKILL.md                     # AI 技能定义（frontmatter 触发词 + 工作流）
+├── scripts/                     # 数据下载 + 配套数据工具（AI 技能执行体）
+│   ├── download.py              # 主下载（搜索/分组/覆盖/校验/下载）
+│   ├── analyze.py / analysis.py # 数据质量分析与清单
+│   ├── multi_download.py        # 多线程分片下载
+│   ├── robust_download.py       # 稳健下载（断点续传）
 │   ├── poeorb_download.py / gacos_download.py / gacos_fetch.py / dem_download.py
-│   ├── progress_gui.py           # 桌面进度条
-│   ├── requirements.txt          # Python 依赖
-│   └── verify_clone.py           # 全链路验证脚本
-├── skills/                       # 技能发布镜像（安装机制，测试守护同步）
-├── tests/                        # 47 个单元测试
-├── experiment/                   # 实验处理（需 ENVI/SARscape）
-│   ├── config.example.env        # 路径配置模板（本机值 config.env 不入库）
-│   ├── config_loader.py          # python 配置读取
-│   ├── check_environment.py      # 环境自检（27 项）
-│   ├── README.md                 # 实验区说明
-│   ├── bat/                      # SARscape 批处理（按步骤分类）
-│   │   ├── 01_connection_graph/  # 连接图（第 1 步）
-│   │   ├── 02_interferogram/     # 干涉图生成（第 2 步）
-│   │   └── 03_data_prep/         # GACOS 导入 / DEM / geoid
-│   ├── asf_experiment/           # 守护运行单元（部署整目录到 WORK_DIR/）
-│   │   └── sbas_guard.py         # 守护（体检/汇报/自动重启）
-│   ├── tools/                    # 实验辅助（连接图绘制等）
-│   ├── 配套数据/                 # GACOS 收件工具等
-│   └── sar/dem/                  # 研究区 DEM 配置
-├── SKILL.md / README.md / install.sh / package.json
+│   ├── progress_gui.py          # 桌面进度条
+│   ├── requirements.txt         # Python 依赖
+│   └── verify_clone.py          # 全链路验证脚本
+├── skills/                      # 技能发布镜像（安装机制，测试守护同步）
+├── tests/                       # 47 个单元测试
+├── experiment/                  # 实验处理（需 ENVI/SARscape）
+│   ├── config.example.env       # 路径配置模板（本机值 config.env 不入库）
+│   ├── config_loader.py         # python 配置读取
+│   ├── check_environment.py     # 环境自检（27 项）
+│   ├── README.md                # 实验区说明
+│   ├── bat/                     # SARscape 批处理（按步骤分类）
+│   │   ├── 01_connection_graph/ # 连接图（第 1 步）
+│   │   ├── 02_interferogram/    # 干涉图生成（第 2 步）
+│   │   └── 03_data_prep/        # GACOS 导入 / DEM / geoid
+│   ├── asf_experiment/          # 守护运行单元（部署整目录到 WORK_DIR/）
+│   │   └── sbas_guard.py        # 守护（体检/汇报/自动重启）
+│   ├── tools/                   # 实验辅助（连接图绘制等）
+│   ├── 配套数据/                # GACOS 收件工具等
+│   └── sar/dem/                 # 研究区 DEM 配置
+├── README.md / install.sh / package.json
 └── docs/
 ```
 
@@ -181,9 +218,11 @@ asf-sentinel1-download/
 
 ## 🧠 工作原理
 
-### 下载工具核心逻辑（scripts/）
+### AI 技能（SKILL.md + scripts/）
 
-- **SBAS 数据要求**：所有影像同一相对轨道（pathNumber）+ 同一方向（升/降轨），且每个时相完全覆盖研究区
+- **触发**：对话中出现触发词（"从ASF下载哨兵数据"等），AI 加载 SKILL.md 按流程执行
+- **认证**：ASFSession.auth_with_creds()（EDL token + asf-urs cookie），凭证存 config.json
+- **SBAS 数据要求**：同一相对轨道 + 同一方向 + 每个时相全覆盖研究区
 - **覆盖校验**：单景 `footprint.covers(aoi)` → 跨帧并集 `unary_union.covers(aoi)`
 - **轨道一致性**：下载前校验组内 pathNumber 完全一致（防同 frame 混轨道）
 - **逐时相检查**：每个时相（同一天）并集必须全覆盖，无效时相自动排除
@@ -192,7 +231,7 @@ asf-sentinel1-download/
 
 - SARscape 批处理通过 `config.env` 读取全部路径，**零硬编码**
 - bat 用 `%~dp0..\..\config.env` 定位配置；python 用 `config_loader.py`
-- 守护 `sbas_guard.py` 独立运行（不依赖旧版自动化系统），读 config + notify/mail 配置
+- 守护 `sbas_guard.py` 独立运行，读 config + notify/mail 配置
 
 ---
 
