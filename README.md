@@ -41,7 +41,7 @@ curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/ma
 ## 🔗 全链路总览（AI + 批处理）
 
 ```
-① 数据下载（AI 技能）          ② 数据准备（AI 技能）       ③ SARscape 处理（AI 执行）      ④ 监控（守护 + AI 查询）
+① 数据下载（AI 技能）          ② 数据准备（AI 技能）       ③ AI-InSAR 处理（AI 执行）     ④ 监控（守护 + AI 查询）
 ────────────────────          ────────────────────        ──────────────────────      ─────────────────
 对话说"下载哨兵数据"    →      POEORB/GACOS/DEM      →      AI: 识别地形→列参数表   →     sbas_guard.py
 AI 自动: 搜索/分组/      →      对话说"下载配套数据"   →      你确认 → AI 执行 bat    →     自动体检 30 分钟
@@ -65,7 +65,7 @@ AI 自动: 搜索/分组/      →      对话说"下载配套数据"   →     
 |---|---|
 | **AI 数据下载** | 对话触发、同轨同向、逐时相全覆盖校验、轨道一致性、多线程分片（8×）、断点续传、多极化 |
 | **AI 配套数据** | POEORB / GACOS（邮件自动收件）/ NASADEM 30m——全部官方源 |
-| **AI 批处理** | 对话说"开始实验" → AI 识别地形、列参数表逐项确认 → 执行 SARscape 五步 bat（连接图→干涉→反演×2→地理编码）→ 汇报；零硬编码（config.env）|
+| **AI-InSAR 处理** | 对话说"开始实验" → AI 识别地形、列参数表逐项确认 → 执行 SARscape 五步 bat（连接图→干涉→反演×2→地理编码）→ 汇报；零硬编码（config.env）|
 | **AI 守护监控** | AI 部署守护、自动体检、微信（Server酱）+ 邮件、崩溃自动重启、磁盘/停滞预警；用户随时问进展 AI 查日志回答 |
 | **AI 可移植** | 对话说"检查环境"→ AI 跑自检（27 项）并修复；"验证仓库"→ AI 跑全链路验证（34 项）|
 
@@ -166,7 +166,7 @@ python scripts\gacos_fetch.py --mail-config mail.json --out ./gacos --expect 77 
 python scripts\dem_download.py --aoi 研究区.shp --out ./dem
 ```
 
-### ③ SARscape 批处理（需 ENVI+SARscape）
+### ③ AI-InSAR 处理（需 ENVI+SARscape）
 
 **对话方式**（推荐）：
 
