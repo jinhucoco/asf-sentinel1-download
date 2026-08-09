@@ -3,3 +3,12 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.part
+
+# ===== experiment/ 实验区：敏感配置与运行时文件（绝不入库）=====
+experiment/**/notify_config.json
+experiment/**/mail_config.json
+experiment/**/config.json
+experiment/**/dl_*.txt
+experiment/**/*.log
+experiment/**/*.flag
+experiment/**/*.png
