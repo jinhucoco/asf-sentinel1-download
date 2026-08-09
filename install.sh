@@ -78,10 +78,10 @@ download_repo_zip() {
 # ---------- 定位技能源码 ----------
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC=""
-if [ -d "$SCRIPT_DIR/skills/$SKILL_NAME" ] && [ -f "$SCRIPT_DIR/skills/$SKILL_NAME/download.py" ]; then
+if [ -d "$SCRIPT_DIR/skills/$SKILL_NAME" ] && [ -f "$SCRIPT_DIR/skills/$SKILL_NAME/scripts/download.py" ]; then
   SRC="$SCRIPT_DIR/skills/$SKILL_NAME"
   info "使用自包含技能目录: $SRC"
-elif [ -f "$SCRIPT_DIR/download.py" ] && [ -f "$SCRIPT_DIR/SKILL.md" ]; then
+elif [ -f "$SCRIPT_DIR/scripts/download.py" ] && [ -f "$SCRIPT_DIR/SKILL.md" ]; then
   SRC="$SCRIPT_DIR"
   info "使用仓库根目录技能: $SRC"
 elif [ -d "$SCRIPT_DIR/skills/$SKILL_NAME" ]; then
@@ -102,7 +102,7 @@ else
   else
     die "无法下载仓库（git clone 与 zip 均失败）。请检查网络，或浏览器下载: $ZIP_URL"
   fi
-  if [ -d "$REPO_DIR/skills/$SKILL_NAME" ] && [ -f "$REPO_DIR/skills/$SKILL_NAME/download.py" ]; then
+  if [ -d "$REPO_DIR/skills/$SKILL_NAME" ] && [ -f "$REPO_DIR/skills/$SKILL_NAME/scripts/download.py" ]; then
     SRC="$REPO_DIR/skills/$SKILL_NAME"
   else
     SRC="$REPO_DIR"
@@ -210,9 +210,9 @@ else
   PIP=""
 fi
 if [ -n "$PIP" ]; then
-  if [ -f "$SRC/requirements.txt" ]; then
+  if [ -f "$SRC/scripts/requirements.txt" ]; then
     # shellcheck disable=SC2086
-    $PIP install -r "$SRC/requirements.txt" || warn "依赖安装失败，请手动执行: pip install -r requirements.txt"
+    $PIP install -r "$SRC/scripts/requirements.txt" || warn "依赖安装失败，请手动执行: pip install -r scripts/requirements.txt"
   else
     # shellcheck disable=SC2086
     $PIP install ${PYDEPS[*]} || warn "依赖安装失败，请手动执行: pip install ${PYDEPS[*]}"

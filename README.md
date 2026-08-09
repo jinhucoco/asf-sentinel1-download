@@ -17,10 +17,10 @@
 
 | 功能 | 脚本 | 需要账号 |
 |------|------|---------|
-| 🛰️ Sentinel-1 SLC 主数据下载（轨道分组/覆盖校验/多线程） | `download.py` `multi_download.py` `robust_download.py` | ✅ Earthdata |
-| 📡 精密轨道文件 POEORB（与 SLC 时相对应） | `poeorb_download.py` | ❌ 免账号 |
-| 🌤️ GACOS 大气延迟 ztd（时相 + 范围 + UTC 时刻） | `gacos_download.py` `gacos_fetch.py` | ❌ 仅需邮箱收结果 |
-| ⛰️ DEM 30m（NASADEM 官方源(中国大陆需要走代理)，研究区自动分幅） | `dem_download.py` | ✅ Earthdata |
+| 🛰️ Sentinel-1 SLC 主数据下载（轨道分组/覆盖校验/多线程） | `scripts/download.py` `scripts/multi_download.py` `scripts/robust_download.py` | ✅ Earthdata |
+| 📡 精密轨道文件 POEORB（与 SLC 时相对应） | `scripts/poeorb_download.py` | ❌ 免账号 |
+| 🌤️ GACOS 大气延迟 ztd（时相 + 范围 + UTC 时刻） | `scripts/gacos_download.py` `scripts/gacos_fetch.py` | ❌ 仅需邮箱收结果 |
+| ⛰️ DEM 30m（NASADEM 官方源(中国大陆需要走代理)，研究区自动分幅） | `scripts/dem_download.py` | ✅ Earthdata |
 
 ---
 
@@ -180,22 +180,22 @@ AI 自动执行：认证 → 搜索 → 轨道分组 → 展示选择 → 覆盖
 
 ```bash
 # 先分析数据质量（轨道/卫星/frame 覆盖/逐时相/覆盖图/清单）
-python analyze.py --aoi 研究区.kml --start 20200101 --end 20251231 \
+python scripts/analyze.py --aoi 研究区.kml --start 20200101 --end 20251231 \
   --pol VV+VH --out ./analysis --sample --plot
 
 # 再下载（稳健版：断点续传 + 超时 + 重试 + 桌面进度条）
-python robust_download.py --aoi 研究区.kml --start 20240101 --end 20240630 \
+python scripts/robust_download.py --aoi 研究区.kml --start 20240101 --end 20240630 \
   --pol VV+VH --out ./sentinel1_data
 
 # 大流量/慢网络首选（多线程分片，约 8× 提速，自动降级保底）
 # 方式1：清单驱动（推荐——先用 analyze.py 生成清单再批量挂机下载）
-python analyze.py --aoi 研究区.kml --start 20200101 --end 20251231 \
+python scripts/analyze.py --aoi 研究区.kml --start 20200101 --end 20251231 \
   --pol VV+VH --out ./analysis
-python multi_download.py --list ./analysis/list_DESCENDING_135.csv \
+python scripts/multi_download.py --list ./analysis/list_DESCENDING_135.csv \
   --out ./sentinel1_data [--threads 8]
 
 # 方式2：搜索驱动（指定轨道直接下载，跳过交互选择）
-python multi_download.py --aoi 研究区.kml --start 20200101 --end 20251231 \
+python scripts/multi_download.py --aoi 研究区.kml --start 20200101 --end 20251231 \
   --pol VV+VH --track 135 --out ./sentinel1_data [--threads 8]
 ```
 
@@ -317,13 +317,15 @@ def group_union_covers(wkt_aoi, products):
 ```
 asf-sentinel1-download/
 ├── SKILL.md              # 技能定义（frontmatter + 触发条件 + 工作流）
-├── download.py           # 主脚本（搜索 + 轨道分组 + 覆盖判断 + 下载）
-├── analyze.py            # 数据分析模式（轨道/卫星/frame/逐时相/每月采样/覆盖图）
-├── analysis.py           # 分析核心函数库（可独立调用）
-├── robust_download.py    # 稳健下载（断点续传 + 超时 + 重试 + 数据列表）
-├── multi_download.py     # 多线程分片下载（8 线程并发 + MD5 双校验 + 自动降级，大流量首选）
-├── progress_gui.py       # 桌面进度条（Tkinter）
-├── requirements.txt      # 依赖清单
+├── scripts/              # 全部脚本与依赖清单（技能安装后随目录复制）
+│   ├── download.py       # 主脚本（搜索 + 轨道分组 + 覆盖判断 + 下载）
+│   ├── analyze.py        # 数据分析模式（轨道/卫星/frame/逐时相/每月采样/覆盖图）
+│   ├── analysis.py       # 分析核心函数库（可独立调用）
+│   ├── robust_download.py# 稳健下载（断点续传 + 超时 + 重试 + 数据列表）
+│   ├── multi_download.py # 多线程分片下载（8 线程并发 + MD5 双校验 + 自动降级，大流量首选）
+│   ├── progress_gui.py   # 桌面进度条（Tkinter）
+│   ├── poeorb_download.py / gacos_download.py / gacos_fetch.py / dem_download.py
+│   └── requirements.txt  # 依赖清单
 ├── config.example.json   # 凭证模板（安装时复制为 config.json，本地填写真实账号）
 ├── install.sh            # 一键安装脚本（检测 Codex/Claude/pi）
 └── tests/                # 42 个单元测试

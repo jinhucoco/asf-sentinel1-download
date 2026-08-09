@@ -41,7 +41,7 @@ AOI 矢量转 WKT、逐极化搜索（默认 VV+VH 与 VV 一起）并合并，
 2. **运行脚本**：
 
 ```bash
-python ~/.pi/agent/skills/asf-sentinel1-download/download.py \
+python scripts/download.py \
   --aoi <矢量文件> --start <YYYYMMDD> --end <YYYYMMDD> \
   --pol VV+VH,VV --out <下载目录>
 ```
@@ -87,10 +87,10 @@ python ~/.pi/agent/skills/asf-sentinel1-download/download.py \
 ### 1. 精密轨道文件（POEORB）
 
 ```bash
-python ~/.pi/agent/skills/asf-sentinel1-download/poeorb_download.py \
+python scripts/poeorb_download.py \
   --list 下载清单.csv --out ./poeorb
 # 或扫描 SLC 数据目录：
-python ~/.pi/agent/skills/asf-sentinel1-download/poeorb_download.py \
+python scripts/poeorb_download.py \
   --data-dir ./sentinel1_data --out ./poeorb
 ```
 
@@ -101,12 +101,12 @@ python ~/.pi/agent/skills/asf-sentinel1-download/poeorb_download.py \
 
 ```bash
 # 提交（每次 ≤20 日期，自动分批；结果邮件发送）
-python ~/.pi/agent/skills/asf-sentinel1-download/gacos_download.py \
+python scripts/gacos_download.py \
   --bbox "38.34 101.96 103.48 37.28" --list 时相日期.txt \
   --time 23:10 --email 你的邮箱 --out ./gacos
 
 # 收件（IMAP 读邮箱 → 提取链接 → 下载解压 ztd；指数退避轮询）
-python ~/.pi/agent/skills/asf-sentinel1-download/gacos_fetch.py \
+python scripts/gacos_fetch.py \
   --mail-config mail.json --out ./gacos --expect 77 --loop
 ```
 
@@ -117,10 +117,10 @@ python ~/.pi/agent/skills/asf-sentinel1-download/gacos_fetch.py \
 ### 3. DEM（NASADEM 30m 官方源）
 
 ```bash
-python ~/.pi/agent/skills/asf-sentinel1-download/dem_download.py \
+python scripts/dem_download.py \
   --aoi 研究区.shp --out ./dem
 # 或直接给范围：
-python ~/.pi/agent/skills/asf-sentinel1-download/dem_download.py \
+python scripts/dem_download.py \
   --lat 37.3 38.3 --lon 102.0 103.4 --out ./dem
 ```
 
@@ -147,7 +147,7 @@ python ~/.pi/agent/skills/asf-sentinel1-download/dem_download.py \
 下载前可用 `analyze.py` 先分析数据质量：
 
 ```bash
-python ~/.pi/agent/skills/asf-sentinel1-download/analyze.py \
+python scripts/analyze.py \
   --aoi <矢量文件> --start <YYYYMMDD> --end <YYYYMMDD> \
   --pol VV+VH --out <输出目录> --sample --plot
 ```
@@ -165,7 +165,7 @@ python ~/.pi/agent/skills/asf-sentinel1-download/analyze.py \
 网络不稳定时使用 `robust_download.py`（断点续传 + 超时 + 重试）：
 
 ```bash
-python ~/.pi/agent/skills/asf-sentinel1-download/robust_download.py \
+python scripts/robust_download.py \
   --aoi <矢量文件> --start <YYYYMMDD> --end <YYYYMMDD> \
   --pol VV+VH --out <下载目录>
 ```
@@ -182,13 +182,13 @@ python ~/.pi/agent/skills/asf-sentinel1-download/robust_download.py \
 
 ```bash
 # 方式1：清单驱动（推荐——先用 analyze.py 生成清单再批量下载，可挂机续跑）
-python ~/.pi/agent/skills/asf-sentinel1-download/analyze.py \
+python scripts/analyze.py \
   --aoi <矢量文件> --start <YYYYMMDD> --end <YYYYMMDD> --pol VV+VH --out <分析目录>
-python ~/.pi/agent/skills/asf-sentinel1-download/multi_download.py \
+python scripts/multi_download.py \
   --list <分析目录>/list_DESCENDING_135.csv --out <下载目录> [--threads 8]
 
 # 方式2：搜索驱动（指定轨道直接下载，跳过交互选择）
-python ~/.pi/agent/skills/asf-sentinel1-download/multi_download.py \
+python scripts/multi_download.py \
   --aoi <矢量文件> --start <YYYYMMDD> --end <YYYYMMDD> \
   --pol VV+VH --track 135 --out <下载目录> [--threads 8]
 ```
