@@ -25,9 +25,12 @@ def _norm(b: bytes) -> bytes:
 
 
 def _mirror_files():
-    """根目录与镜像 scripts/ 下的全部文件（一致性全集，排除缓存目录）"""
+    """根目录与镜像 scripts/ 下的全部文件（一致性全集，排除缓存与仓库级工具）"""
+    # verify_clone.py 是仓库级验证工具，不随技能安装（不进镜像）
+    REPO_ONLY = {"verify_clone.py"}
+
     def clean(names):
-        return sorted(n for n in names if not n.startswith("__") and n != "__pycache__")
+        return sorted(n for n in names if not n.startswith("__") and n != "__pycache__" and n not in REPO_ONLY)
 
     root_scripts = clean(os.listdir(os.path.join(REPO, "scripts")))
     mirror_scripts = clean(os.listdir(os.path.join(MIRROR, "scripts")))
