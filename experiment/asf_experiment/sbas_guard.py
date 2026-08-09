@@ -30,6 +30,7 @@ DONE_FLAG = os.path.join(WORKDIR, 'sbas_done.flag')
 PS1_FILE = os.path.join(WORK_DIR, 'hide_idl_window.ps1')
 REPORT_START = 9 * 60 + 10   # 09:10
 REPORT_END = 18 * 60         # 18:00
+WECHAT_REPORT_TIMES = [(10, 0), (12, 0), (14, 30), (17, 0)]  # 白天 4 次微信进度推送（HH, MM）
 POLL_SEC = 60
 STALL_MIN = 45               # 停滞判定（分钟）- SARscape 合成相位可静默30+分钟
 HEALTH_CHECK_MIN = 30        # 强制体检间隔（分钟）- 用户睡觉不询问也主动汇报
@@ -306,6 +307,7 @@ def main():
     log('=== SBAS 守护 v3 启动（自动体检 + 主动汇报）===')
     last_report = 0
     last_health = 0
+    last_wechat = 0
     _reported_done = False
     _reported_running = False
     _last_progress = ''
@@ -423,6 +425,16 @@ def main():
             if free < 20:
                 notify_wechat('磁盘空间不足！', f'G盘仅剩 {free:.0f}GB，SBAS 处理可能失败，请尽快处理。')
 
+            # 微信进度汇报（白天 4 次，内容与邮件一致 = full_report；Server酱额度内）
+            # 时间点: 10:00 / 12:00 / 14:30 / 17:00
+            tm_now = time.localtime()
+            for _hh, _mm in WECHAT_REPORT_TIMES:
+                if tm_now.tm_hour == _hh and tm_now.tm_min == _mm and in_report_hours():
+                    if now - last_wechat >= 1800:  # 30 分钟节流防重复
+                        last_wechat = now
+                        notify_wechat('实验进度汇报', full_report())
+                    break
+
             # 定时邮件汇报
             if mail_report_enabled() and now - last_report >= 7200 and in_report_hours():
                 last_report = now
@@ -431,8 +443,6 @@ def main():
                   and time.localtime().tm_min == 0 and now - last_report >= 1800):
                 last_report = now
                 send_mail('[SBAS] 18:00 最终进度汇报', full_report())
-                # 每日 1 条微信日汇总（5 条额度内）
-                notify_wechat('实验日汇总', full_report())
         except Exception as e:
             log(f'检查异常: {e}')
         time.sleep(POLL_SEC)
