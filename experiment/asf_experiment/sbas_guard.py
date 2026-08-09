@@ -11,16 +11,23 @@
 """
 import os, sys, time, glob, json, subprocess, urllib.request, urllib.parse
 
-WORKDIR = 'D:/work/data/asf_experiment'
-SBAS_ROOT = 'G:/gulang2_result_SBAS_processing'
+# ---- 配置（experiment/config.env，可移植；见 config.example.env 模板）----
+_CFG_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, _CFG_DIR)
+from config_loader import load_config
+_CFG = load_config()
+WORK_DIR = _CFG.get('WORK_DIR', 'D:/work/data')
+WORKDIR = os.path.join(WORK_DIR, 'asf_experiment')
+SBAS_ROOT = _CFG.get('RESULT_ROOT', 'G:/gulang2_result_SBAS_processing')
 CG_DIR = os.path.join(SBAS_ROOT, 'CG_gulang2_SBAS_processing')
 TMP_WORK = os.path.join(SBAS_ROOT, 'tmp', 'work')
 WORK_STACK = os.path.join(CG_DIR, 'work', 'work_interferogram_stacking')
-BAT_FILE = 'D:/work/data/run_interf.bat'
+BAT_FILE = os.path.join(WORK_DIR, 'run_interf.bat')
 LOG = os.path.join(WORKDIR, 'sbas_guard.log')
 CFG_FILE = os.path.join(WORKDIR, 'notify_config.json')
 MAIL_CFG = os.path.join(WORKDIR, 'mail_config.json')
 DONE_FLAG = os.path.join(WORKDIR, 'sbas_done.flag')
+PS1_FILE = os.path.join(WORK_DIR, 'hide_idl_window.ps1')
 REPORT_START = 9 * 60 + 10   # 09:10
 REPORT_END = 18 * 60         # 18:00
 POLL_SEC = 60
@@ -230,7 +237,7 @@ def step_done():
 def hide_idl_windows():
     """隐藏所有 IDL Workbench 窗口（单次执行 ps1）"""
     try:
-        ps1 = os.path.join('D:/work/data', 'hide_idl_window.ps1')
+        ps1 = PS1_FILE
         if os.path.exists(ps1):
             run_hidden(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1])
     except Exception:
@@ -286,7 +293,7 @@ def restart():
     log(f'重启 SBAS 干涉任务（{os.path.basename(BAT_FILE)}）...')
     try:
         popen_hidden(['cmd', '/c', BAT_FILE],
-                     cwd='D:/work/data', env=env,
+                     cwd=WORK_DIR, env=env,
                      stdout=open(os.path.join(WORKDIR, 'sbas_run.log'), 'a', encoding='utf-8'),
                      stderr=subprocess.STDOUT,
                      close_fds=True)

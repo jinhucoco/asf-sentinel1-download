@@ -12,3 +12,4 @@ experiment/**/dl_*.txt
 experiment/**/*.log
 experiment/**/*.flag
 experiment/**/*.png
+experiment/config.env
