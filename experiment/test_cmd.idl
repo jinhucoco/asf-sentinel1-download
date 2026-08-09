@@ -1,0 +1,14 @@
+openw,lg,'D:\work\data\sarbatch_log.txt',/get_lun
+printf,lg,'STEP1: start'
+!PATH = !PATH + ';' + 'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\idl\lib' + ';' + 'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\idl\lib\hook' + ';' + 'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\envi\sarscape_local_sav'
+printf,lg,'STEP2: path set'
+resolve_routine, 'sarscape_batch_init', /COMPILE_FULL_FILE
+printf,lg,'STEP3: resolve done'
+temp_dir = 'D:\work\data\sar_tmp'
+SARscape_Batch_Init, Temp_Directory=temp_dir
+printf,lg,'STEP4: init done'
+oSB = obj_new('SARscapeBatch')
+printf,lg,'STEP5: obj valid=' + string(OBJ_VALID(oSB))
+free_lun,lg
+SARscape_Batch_Exit
+exit

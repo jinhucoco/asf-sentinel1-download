@@ -1,0 +1,4 @@
+@echo off
+cd /d D:\work\data
+"C:\Program Files\Harris\ENVI56\IDL88\bin\bin.x86_64\envi_idl.exe" -quiet -e "!PATH=!PATH+';'+'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\idl\lib'+';'+'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\idl\lib\hook'+';'+'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\envi\sarscape_local_sav' & resolve_routine,'sarscape_batch_init',/COMPILE_FULL_FILE & SARscape_Batch_Init,Temp_Directory='G:\gulang2_result_SBAS_processing\tmp' & set_plot,'win' & x=findgen(10) & y=x^2 & window,0,xsize=400,ysize=300 & plot,x,y,title='IDL Plot Test',xtitle='X',ytitle='Y' & f='G:\gulang2_result_SBAS_processing\CG_gulang2_SBAS_processing\connection_graph\plot\idl_test.png' & tvscl,rdbuf(/true) & write_png,f,tvrd(true=1) & print,'PLOT_OK' & exit" > sarbatch_plot_test.txt 2>&1
+echo EXIT=%ERRORLEVEL% >> sarbatch_plot_test.txt

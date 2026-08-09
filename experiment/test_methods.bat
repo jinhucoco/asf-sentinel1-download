@@ -1,0 +1,4 @@
+@echo off
+cd /d D:\work\data
+"C:\Program Files\Harris\ENVI56\IDL88\bin\bin.x86_64\envi_idl.exe" -quiet -e "!PATH=!PATH+';'+'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\idl\lib'+';'+'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\idl\lib\hook'+';'+'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\envi\sarscape_local_sav' & resolve_routine,'sarscape_batch_init',/COMPILE_FULL_FILE & SARscape_Batch_Init,Temp_Directory='G:\gulang2_result_SBAS_processing\tmp' & openw,u,'D:\work\data\sar_modules.txt',/get_lun & o=obj_new('SARscapeBatch',Module='InSARStackSBASGenerateConnectionGraph') & h=help,/structure,o & printf,u,o & methods=obj_class(o) & printf,u,'CLASS:',methods & free_lun,u & exit" > sarbatch_methods.txt 2>&1
+echo EXIT=%ERRORLEVEL% >> sarbatch_methods.txt

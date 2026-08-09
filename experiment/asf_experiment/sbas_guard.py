@@ -1,0 +1,434 @@
+# -*- coding: utf-8 -*-
+"""SBAS 干涉处理守护 v3（2026-08-05 深夜增强版）
+监控 + 自动体检 + 主动汇报（不依赖用户询问）
+新增 v3 能力:
+  1. CPU 活动检测: main_sbas CPU 时间持续增长=正常; 不增长但进程在=卡死
+  2. 进度推进检测: Process.working 对比上次, 长时间无变化=异常
+  3. 异常退出检测: envi_idl 消失时查日志, EXIT≠0/有ERROR=报错不盲目重启
+  4. 强制周期体检: 每 30 分钟微信汇报进度（用户睡觉不询问也能收到）
+  5. 参考景完成检测: 检测 R_38 超参考完成 → 通知"最慢阶段已过"
+用法: python -u sbas_guard.py
+"""
+import os, sys, time, glob, json, subprocess, urllib.request, urllib.parse
+
+WORKDIR = 'D:/work/data/asf_experiment'
+SBAS_ROOT = 'G:/gulang2_result_SBAS_processing'
+CG_DIR = os.path.join(SBAS_ROOT, 'CG_gulang2_SBAS_processing')
+TMP_WORK = os.path.join(SBAS_ROOT, 'tmp', 'work')
+WORK_STACK = os.path.join(CG_DIR, 'work', 'work_interferogram_stacking')
+BAT_FILE = 'D:/work/data/run_interf.bat'
+LOG = os.path.join(WORKDIR, 'sbas_guard.log')
+CFG_FILE = os.path.join(WORKDIR, 'notify_config.json')
+MAIL_CFG = os.path.join(WORKDIR, 'mail_config.json')
+DONE_FLAG = os.path.join(WORKDIR, 'sbas_done.flag')
+REPORT_START = 9 * 60 + 10   # 09:10
+REPORT_END = 18 * 60         # 18:00
+POLL_SEC = 60
+STALL_MIN = 45               # 停滞判定（分钟）- SARscape 合成相位可静默30+分钟
+HEALTH_CHECK_MIN = 30        # 强制体检间隔（分钟）- 用户睡觉不询问也主动汇报
+CPU_STALL_CHECK_MIN = 10     # CPU 卡死检测窗口（分钟）
+DETACHED = 0x00000008 | 0x00000200
+CREATE_NO_WINDOW = 0x08000000
+
+_last_notify = {}
+
+def log(msg):
+    line = f'[{time.strftime("%Y-%m-%d %H:%M:%S")}] {msg}'
+    print(line, flush=True)
+    try:
+        with open(LOG, 'a', encoding='utf-8') as f:
+            f.write(line + '\n')
+    except Exception:
+        pass
+
+# ---------- 配置 ----------
+def load_cfg():
+    try:
+        return json.load(open(MAIL_CFG, encoding='utf-8'))
+    except Exception:
+        return None
+
+def mail_report_enabled():
+    try:
+        cfg = json.load(open(CFG_FILE, encoding='utf-8'))
+        return cfg.get('mail_report', {}).get('enabled', True)
+    except Exception:
+        return True
+
+def notify_wechat(title, desp=''):
+    """Server酱微信推送（节流 30 分钟）"""
+    try:
+        cfg = json.load(open(CFG_FILE, encoding='utf-8')).get('serverchan', {})
+        if not cfg.get('enabled') or not cfg.get('sendkey') or cfg['sendkey'].startswith('SCT填写'):
+            return
+        key = title[:20]
+        now = time.time()
+        interval = cfg.get('notify_interval_min', 30) * 60
+        if key in _last_notify and now - _last_notify[key] < interval:
+            return
+        _last_notify[key] = now
+        url = f'https://sctapi.ftqq.com/{cfg["sendkey"]}.send'
+        data = urllib.parse.urlencode({'title': f'[SBAS] {title}', 'desp': desp[:2000]}).encode()
+        req = urllib.request.Request(url, data=data, method='POST')
+        resp = json.loads(urllib.request.urlopen(req, timeout=15).read())
+        log(f'[微信] {title} -> {resp.get("code")}')
+    except Exception as e:
+        log(f'[微信失败] {e}')
+
+def send_mail(subject, body):
+    cfg = load_cfg()
+    if not cfg:
+        return False
+    import smtplib
+    from email.mime.text import MIMEText
+    try:
+        msg = MIMEText(body, 'plain', 'utf-8')
+        msg['Subject'] = subject
+        msg['From'] = cfg['address']
+        msg['To'] = cfg['address']
+        host = cfg.get('smtp_host'); port = cfg.get('smtp_port', 465)
+        if port == 465:
+            s = smtplib.SMTP_SSL(host, port, timeout=30)
+        else:
+            s = smtplib.SMTP(host, port, timeout=30); s.starttls()
+        s.login(cfg['address'], cfg['authcode'])
+        s.sendmail(cfg['address'], [cfg['address']], msg.as_string())
+        s.quit()
+        log(f'[邮件] 已发送: {subject}')
+        return True
+    except Exception as e:
+        log(f'[邮件失败] {e}')
+        return False
+
+def in_report_hours():
+    now = time.localtime()
+    t = now.tm_hour * 60 + now.tm_min
+    return REPORT_START <= t <= REPORT_END
+
+# ---------- 子进程（全部隐藏窗口）----------
+def run_hidden(args, **kw):
+    kw.setdefault('capture_output', True)
+    kw.setdefault('timeout', 30)
+    return subprocess.run(args, creationflags=CREATE_NO_WINDOW, **kw)
+
+def popen_hidden(args, **kw):
+    return subprocess.Popen(args, creationflags=DETACHED | CREATE_NO_WINDOW, **kw)
+
+# ---------- 状态检测 ----------
+def sbas_process_alive():
+    """检测 SARscape 计算进程: envi_idl 或 main_sbas 任一存在即视为活跃"""
+    ps = ("$c1 = (Get-CimInstance Win32_Process -Filter \"Name='envi_idl.exe'\" | Measure-Object).Count; "
+          "$c2 = (Get-CimInstance Win32_Process -Filter \"Name='main_sbas.exe'\" | Measure-Object).Count; "
+          "[math]::Max($c1, $c2)")
+    try:
+        out = run_hidden(['powershell', '-NoProfile', '-Command', ps], text=True).stdout.strip()
+        return out not in ('', '0')
+    except Exception:
+        return True
+
+def cpu_seconds():
+    """main_sbas 累计 CPU 秒数（用于判断是否真的在计算）"""
+    try:
+        out = run_hidden(['powershell', '-NoProfile', '-Command',
+                          "(Get-Process main_sbas -ErrorAction SilentlyContinue | Select-Object -First 1).CPU"],
+                         text=True).stdout.strip()
+        return float(out) if out and out.replace('.', '').isdigit() else -1
+    except Exception:
+        return -1
+
+def work_latest_mtime():
+    """work 目录最新文件活动时间（SARscape 实际产出）"""
+    latest = 0
+    if os.path.isdir(WORK_STACK):
+        try:
+            for f in os.listdir(WORK_STACK):
+                fp = os.path.join(WORK_STACK, f)
+                try:
+                    latest = max(latest, os.path.getmtime(fp))
+                except OSError:
+                    pass
+        except OSError:
+            pass
+    return latest
+
+def work_file_count():
+    """work 目录文件数（进度推进指标）"""
+    try:
+        return len(os.listdir(WORK_STACK)) if os.path.isdir(WORK_STACK) else 0
+    except OSError:
+        return 0
+
+def trace_mtime():
+    t = os.path.join(TMP_WORK, 'Process.trace')
+    try:
+        return os.path.getmtime(t)
+    except OSError:
+        return 0
+
+def trace_error():
+    """检查 trace 尾部是否有错误关键字"""
+    t = os.path.join(TMP_WORK, 'Process.trace')
+    try:
+        size = os.path.getsize(t)
+        with open(t, 'rb') as f:
+            f.seek(max(0, size - 200000))
+            tail = f.read().decode('utf-8', errors='replace')
+        for kw in ['[CORE][!]', 'Error:', 'FATAL', 'call_exit_program']:
+            if kw in tail:
+                # 找到错误行
+                for line in tail.split('\n'):
+                    if kw in line:
+                        return line.strip()[:120]
+        return ''
+    except Exception:
+        return ''
+
+def parse_progress():
+    """从 Process.working 解析当前进度"""
+    try:
+        wf = os.path.join(TMP_WORK, 'Process.working')
+        with open(wf, encoding='utf-8', errors='replace') as f:
+            content = f.read().strip()
+        lines = [l for l in content.split('\n') if l.strip()]
+        if lines:
+            return lines[-1]
+    except Exception:
+        pass
+    return ''
+
+def count_interf_pairs():
+    try:
+        rep = os.path.join(CG_DIR, 'connection_graph', 'CG_report.txt')
+        if os.path.exists(rep):
+            return sum(1 for l in open(rep, encoding='utf-8', errors='replace')
+                       if 'SECONDARY :' in l)
+    except Exception:
+        pass
+    return 376
+
+def completed_pairs():
+    """已完成的干涉对（sint 文件数/2, 每对产生 rg+az 两个 sint）"""
+    if os.path.isdir(WORK_STACK):
+        return sum(1 for f in os.listdir(WORK_STACK) if f.endswith('_original_sint'))
+    return 0
+
+def step_done():
+    aux = os.path.join(CG_DIR, 'auxiliary.sml')
+    try:
+        if os.path.exists(aux):
+            txt = open(aux, encoding='utf-8', errors='replace').read()
+            if '<interf_stack>OK</interf_stack>' in txt:
+                return True
+    except Exception:
+        pass
+    for pat in [os.path.join(CG_DIR, 'interferogram_stacking', 'IS_fint_meta*'),
+                os.path.join(SBAS_ROOT, 'interferogram_stacking', 'IS_fint_meta*')]:
+        if glob.glob(pat):
+            return True
+    return False
+
+def hide_idl_windows():
+    """隐藏所有 IDL Workbench 窗口（单次执行 ps1）"""
+    try:
+        ps1 = os.path.join('D:/work/data', 'hide_idl_window.ps1')
+        if os.path.exists(ps1):
+            run_hidden(['powershell', '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', ps1])
+    except Exception:
+        pass
+
+def disk_free_gb():
+    try:
+        out = run_hidden(['df', '-h', '/g'], text=True).stdout
+        for line in out.split('\n'):
+            parts = line.split()
+            if len(parts) >= 4 and parts[0] == 'G:':
+                return float(parts[3].replace('G', ''))
+    except Exception:
+        pass
+    return 999
+
+def output_size_gb():
+    try:
+        out = run_hidden(['du', '-sh', SBAS_ROOT], text=True).stdout
+        return out.split()[0] if out else '?'
+    except Exception:
+        return '?'
+
+def full_report():
+    lines = []
+    lines.append(f'SBAS 干涉处理进度汇报  {time.strftime("%Y-%m-%d %H:%M:%S")}')
+    lines.append('-' * 40)
+    prog = parse_progress()
+    total = count_interf_pairs()
+    done = completed_pairs()
+    alive = sbas_process_alive()
+    lines.append(f'进程状态: {"运行中" if alive else "未运行"}')
+    lines.append(f'当前进度: {prog if prog else "(读取中/未开始)"}')
+    lines.append(f'已完成干涉对: {done}/{total} ({done/total*100:.1f}%)')
+    lines.append(f'第2步完成: {"是 ✅" if step_done() else "否 ⏳"}')
+    lines.append(f'输出大小: {output_size_gb()}')
+    free = disk_free_gb()
+    lines.append(f'G盘剩余: {free:.0f}GB')
+    lines.append('')
+    lines.append('产物目录:')
+    for sub in ['connection_graph', 'interferogram_stacking', 'first_inversion',
+                'second_inversion', 'geocoding']:
+        d = os.path.join(CG_DIR, sub)
+        n = len(os.listdir(d)) if os.path.isdir(d) else 0
+        lines.append(f'  {sub}/: {n} 个文件')
+    return '\n'.join(lines)
+
+def restart():
+    run_hidden(['powershell', '-NoProfile', '-Command',
+               "Get-Process envi_idl,main_sbas,sarsnt -ErrorAction SilentlyContinue | Stop-Process -Force"])
+    time.sleep(3)
+    env = dict(os.environ, PYTHONIOENCODING='utf-8')
+    log(f'重启 SBAS 干涉任务（{os.path.basename(BAT_FILE)}）...')
+    try:
+        popen_hidden(['cmd', '/c', BAT_FILE],
+                     cwd='D:/work/data', env=env,
+                     stdout=open(os.path.join(WORKDIR, 'sbas_run.log'), 'a', encoding='utf-8'),
+                     stderr=subprocess.STDOUT,
+                     close_fds=True)
+        return True
+    except Exception as e:
+        log(f'重启失败: {e}')
+        return False
+
+def main():
+    log('=== SBAS 守护 v3 启动（自动体检 + 主动汇报）===')
+    last_report = 0
+    last_health = 0
+    _reported_done = False
+    _reported_running = False
+    _last_progress = ''
+    _last_cpu = -1
+    _last_cpu_time = 0
+    _last_work_count = 0
+    _reported_slow = False
+    _restart_count = 0
+    _last_restart_time = 0
+    _reported_r38_done = False
+
+    while True:
+        try:
+            done = step_done()
+            if done:
+                if not _reported_done:
+                    _reported_done = True
+                    log('[DONE] 第2步干涉处理完成！')
+                    notify_wechat('干涉处理完成！', full_report())
+                    send_mail('[SBAS] 干涉处理完成 🎉', full_report())
+                    open(DONE_FLAG, 'w').write(time.strftime('%Y-%m-%d %H:%M:%S'))
+                time.sleep(POLL_SEC)
+                continue
+
+            alive = sbas_process_alive()
+            now = time.time()
+
+            # ===== 异常退出检测（进程消失时）=====
+            if not alive:
+                if os.path.exists(os.path.join(WORKDIR, 'pause.flag')) or os.path.exists(os.path.join(WORKDIR, 'stop.flag')):
+                    log('遥控暂停/停止中，不重启')
+                else:
+                    # 查 trace 错误
+                    err = trace_error()
+                    # 防重启风暴: 10 分钟内最多重启 3 次
+                    if now - _last_restart_time < 600:
+                        _restart_count += 1
+                    else:
+                        _restart_count = 1
+                    _last_restart_time = now
+                    if _restart_count >= 3:
+                        log('!!! 重启超过3次，停止自动重启，等待人工干预')
+                        notify_wechat('反复崩溃，停止自动重启！',
+                                      f'10分钟内重启{_restart_count}次，可能数据/配置问题。\n{trace_error()}')
+                    else:
+                        log(f'未发现 envi_idl 进程，自动重启 (第{_restart_count}次)')
+                        notify_wechat(f'干涉进程消失，自动重启(第{_restart_count}次)',
+                                      f'异常信息: {err or "无错误标记"}\n已拉起新进程。')
+                        restart()
+                _reported_running = False
+            else:
+                if not _reported_running:
+                    _reported_running = True
+                    log('[INFO] 干涉进程运行中')
+                    notify_wechat('干涉处理已启动', 'SBAS 第2步（376干涉对，8:2多视，GACOS校正）开始运行。')
+                    _last_cpu = cpu_seconds()
+                    _last_cpu_time = now
+                    _last_progress = parse_progress()
+                    _last_work_count = work_file_count()
+
+                # ===== CPU 卡死检测（进程在但没在算）=====
+                cpu = cpu_seconds()
+                if cpu >= 0 and _last_cpu >= 0 and (now - _last_cpu_time) >= CPU_STALL_CHECK_MIN * 60:
+                    delta = cpu - _last_cpu
+                    if delta < 30:  # 10分钟内CPU增量<30秒 = 基本没在算
+                        log(f'警告: main_sbas CPU 10分钟仅增 {delta:.0f}s，疑似卡死')
+                        if not _reported_slow:
+                            _reported_slow = True
+                            notify_wechat('警告: 处理疑似卡死', f'main_sbas CPU 10分钟仅增{delta:.0f}s，进程在但可能没计算。\n当前进度: {parse_progress()}')
+                    else:
+                        _reported_slow = False
+                    _last_cpu = cpu
+                    _last_cpu_time = now
+
+                # ===== 停滞检测（trace/work 目录 45 分钟无活动）=====
+                work_mtime = work_latest_mtime()
+                t = max(trace_mtime(), work_mtime)
+                if t and (now - t) > STALL_MIN * 60:
+                    log(f'干涉停滞 {int(now-t)//60} 分钟，杀进程重启')
+                    notify_wechat('干涉停滞，已杀进程重启',
+                                  f'工作目录已 {int(now-t)//60} 分钟无活动，守护自动处理。')
+                    run_hidden(['powershell', '-NoProfile', '-Command',
+                                "Stop-Process -Name envi_idl,main_sbas -Force -ErrorAction SilentlyContinue"])
+                    time.sleep(5)
+                    restart()
+                else:
+                    # 进度变化检测
+                    prog = parse_progress()
+                    wc = work_file_count()
+                    # 超参考 R_38 完成检测（进度从 R_38 变到其他参考 = 最慢阶段已过, 仅白天汇报）
+                    if not _reported_r38_done and prog and 'R_38' not in prog and 'R_38' in _last_progress:
+                        _reported_r38_done = True
+                        if in_report_hours():
+                            notify_wechat('超参考 R_38 配准完成！', '最慢的参考景（10个副影像）已处理完，后续会加速。')
+                    if prog != _last_progress or wc != _last_work_count:
+                        _last_progress = prog
+                        _last_work_count = wc
+                        _reported_slow = False  # 有推进则清除卡死警告
+
+                # ===== 强制周期体检（每30分钟; 只记日志, 微信额度有限不再推送）=====
+                # Server酱额度 5 条/天：微信只留给异常/完成/18:00日汇总
+                if now - last_health >= HEALTH_CHECK_MIN * 60:
+                    last_health = now
+                    done_cnt = completed_pairs()
+                    total = count_interf_pairs()
+                    pct = done_cnt / total * 100 if total else 0
+                    prog_now = parse_progress() or "读取中"
+                    log(f'[体检] {done_cnt}/{total} 对, {output_size_gb()}, 进度: {prog_now}')
+
+            # 隐藏 IDL 窗口（防弹窗）
+            hide_idl_windows()
+
+            # 磁盘检测
+            free = disk_free_gb()
+            if free < 20:
+                notify_wechat('磁盘空间不足！', f'G盘仅剩 {free:.0f}GB，SBAS 处理可能失败，请尽快处理。')
+
+            # 定时邮件汇报
+            if mail_report_enabled() and now - last_report >= 7200 and in_report_hours():
+                last_report = now
+                send_mail(f'[SBAS] 定时进度汇报 {time.strftime("%H:%M")}', full_report())
+            elif (mail_report_enabled() and time.localtime().tm_hour == 18
+                  and time.localtime().tm_min == 0 and now - last_report >= 1800):
+                last_report = now
+                send_mail('[SBAS] 18:00 最终进度汇报', full_report())
+                # 每日 1 条微信日汇总（5 条额度内）
+                notify_wechat('实验日汇总', full_report())
+        except Exception as e:
+            log(f'检查异常: {e}')
+        time.sleep(POLL_SEC)
+
+if __name__ == '__main__':
+    main()

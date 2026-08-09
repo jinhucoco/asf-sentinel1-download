@@ -1,0 +1,4 @@
+@echo off
+cd /d D:\work\data
+"C:\Program Files\Harris\ENVI56\IDL88\bin\bin.x86_64\envi_idl.exe" -quiet -e "!PATH=!PATH+';'+'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\idl\lib'+';'+'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\idl\lib\hook'+';'+'C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\envi\sarscape_local_sav' & resolve_routine,'sarscape_batch_init',/COMPILE_FULL_FILE & SARscape_Batch_Init,Temp_Directory='D:\work\data\sar_tmp' & openw,u,'D:\work\data\sar_modules.txt',/get_lun & printf,u,'OPEN-OK' & o=obj_new('SARscapeBatch',Module='ToolsDemExtractionSrtm1') & printf,u,'OBJ:',byte(OBJ_VALID(o)) & lp=o.ListParams() & printf,u,'PARAMS-N:',n_elements(lp) & if n_elements(lp) gt 0 then printf,u,strjoin(lp,'|') & free_lun,u & exit" > sarbatch_err16.txt 2>&1
+echo EXIT=%ERRORLEVEL% >> sarbatch_err16.txt
