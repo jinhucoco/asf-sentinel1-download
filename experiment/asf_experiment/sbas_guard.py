@@ -304,6 +304,10 @@ def restart():
         return False
 
 def main():
+    # Windows 控制台默认 GBK：emoji（如 🎉）会崩，重配置为 utf-8
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
     log('=== SBAS 守护 v3 启动（自动体检 + 主动汇报）===')
     last_report = 0
     last_health = 0
