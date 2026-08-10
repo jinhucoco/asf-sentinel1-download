@@ -1,11 +1,10 @@
-# SBAS-InSAR 全链路自动化（AI 技能）
+# SBAS-InSAR 全链路自动化
 
 **一个给 AI 工具（pi / Codex / Claude Code / Cursor）用的技能 + 实验全链路流水线**：
 在对话里说出需求，AI 自动从 ASF 下载 Sentinel-1 数据、获取配套数据（DEM/GACOS/POEORB）、
-配合 SARscape 批处理完成 SBAS-InSAR 全流程，并有守护进程全程自动监控汇报。
+基于ENVI和SARscape完成 SBAS-InSAR 全流程，并有守护进程全程自动监控汇报。
 
 > 仓库结构：`SKILL.md`（AI 技能定义）+ `scripts/`（下载/配套工具）+ `experiment/`（SARscape 批处理 + 守护）+ 环境自检 + 验证脚本。
-> 遵循 `dev` 分支开发 → 测试 → 合并 `main` 的工作流。
 
 ---
 
@@ -17,7 +16,7 @@
 | **AI 配套数据** | POEORB / GACOS（邮件自动收件）/ NASADEM 30m——全部官方源 |
 | **AI-InSAR 处理** | 对话说"开始实验" → AI 识别地形、列参数表逐项确认 → 执行 SARscape 五步 bat（连接图→干涉→反演×2→地理编码）→ 汇报；零硬编码（config.env）|
 | **AI 守护监控** | AI 部署守护、自动体检、微信（Server酱）+ 邮件、崩溃自动重启、磁盘/停滞预警；用户随时问进展 AI 查日志回答 |
-| **AI 可移植** | 对话说"检查环境"→ AI 跑自检（27 项）并修复；"验证仓库"→ AI 跑全链路验证（34 项）|
+| **AI 可移植** | 对话说"检查环境"→ AI 跑自检并修复；"验证仓库"→ AI 跑全链路验证|
 
 ---
 
@@ -26,15 +25,15 @@
 | 依赖 | 必需？ | 说明 |
 |---|---|---|
 | **Python 3.10+** | ✅ | `pip install -r scripts/requirements.txt` |
-| **ENVI + SARscape** | 处理阶段 ✅ | 商业软件，需自己的 license（下载/配套数据不需要）|
+| **ENVI5.6 + SARscape5.7以及以上** | 处理阶段 ✅ | 商业软件，需自己的 license（下载/配套数据不需要）|
 | **NASA Earthdata 账号** | ✅ | 免费注册，AI 对话中说"配置 ASF 账号密码" |
 | **SLC 数据** | ✅ | AI 技能自动从 ASF 下载 |
 | **GACOS/DEM/POEORB** | ✅ | AI 技能自动获取 |
-| **通知凭证** | 可选 | Server酱 SendKey、SMTP 授权码（守护汇报用）|
+| **通知凭证** | 可选 | Server酱 SendKey（sct.ftqq.com ）、SMTP 授权码（守护汇报用，可自行设置邮箱）|
 
 ---
 
-## 🤖 AI 技能使用（核心方式）
+## 🤖 使用（核心方式）
 
 ### 安装与快速开始
 
@@ -52,10 +51,12 @@ curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/ma
 **安装后 3 步即可开始使用**（全部在 AI 对话中完成）：
 
 ```
-你: 帮我配置环境          → AI 拉代码/装依赖/跑 setup_env.py 向导（自动探测路径）→ 生成 config.env → 自检 27 项
-你: 配置 ASF 账号密码      → AI 引导输入 Earthdata 凭证，写入 config.json
+你: 帮我配置环境
+AI：拉代码/装依赖/跑 setup_env.py 向导（自动探测路径）→ 生成 config.env → 自检 27 项
+你: 配置 ASF 账号密码
+AI：引导输入 Earthdata 凭证，写入 config.json
 你: 从 ASF 下载哨兵数据，区域 研究区.shp，时间 20240101 至 20240630，VV+VH
-                          → AI 自动搜索/校验/确认/下载（开始使用！）
+AI：自动搜索/校验/确认/下载（开始使用！）
 ```
 
 > 环境验证：对 AI 说「验证仓库」，AI 跑 34 项全链路验证确保就绪。
@@ -175,26 +176,6 @@ asf-sentinel1-download/
 - SARscape 批处理通过 `config.env` 读取全部路径，**零硬编码**
 - bat 用 `%~dp0..\..\config.env` 定位配置；python 用 `config_loader.py`
 - 守护 `sbas_guard.py` 独立运行，读 config + notify/mail 配置
-
----
-
-## 🧪 测试（Testing）
-
-```bash
-cd asf-sentinel1-download
-python -m pytest tests/ -q          # 47 个单元测试（下载逻辑 + 镜像一致性）
-python scripts/verify_clone.py      # 34 项全链路验证（全新用户视角）
-```
-
----
-
-## ⚠️ 已知限制（Known Limitations）
-
-- **第 0 步 SLC 导入 bat（框架已建，参数待提取）**：`bat/00_import/run_import_slc.bat` 结构就绪，需从 SARscape 导入向导提取实际参数后启用（当前 GUI 手动导入 77 景）
-- **第 3-5 步 bat（框架已建，参数名待验证）**：`bat/03_inversion/run_inv1.bat`、`run_inv2.bat`、`bat/04_geocode/run_geocode.bat`——参数值已按交接文档三十章设定（linear/0.2/MCF/等级2/大气LP1200m HP365天/30m网格），**参数名按 run_interf 风格推断，执行前需用 VERIFY 输出校验**（实验进行中，跑到时验证）
-- **ENVI/SARscape 为商业软件**：需自己的 license，代码无法替代
-- **仓库名暂未改**：当前为 asf-sentinel1-download，全链路化后计划更名
-- **GACOS 依赖邮箱**：需 IMAP 授权码，偶发漏生成某日期需单独重提
 
 ---
 
