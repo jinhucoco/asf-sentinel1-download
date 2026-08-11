@@ -9,7 +9,7 @@
   5. 参考景完成检测: 检测 R_38 超参考完成 → 通知"最慢阶段已过"
 用法: python -u sbas_guard.py
 """
-import os, sys, time, glob, json, subprocess, urllib.request, urllib.parse
+import os, sys, time, glob, json, re, subprocess, urllib.request, urllib.parse
 
 # ---- 配置（experiment/config.env，可移植；见 config.example.env 模板）----
 _CFG_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -23,6 +23,14 @@ CG_DIR = os.path.join(SBAS_ROOT, 'CG_gulang2_SBAS_processing')
 TMP_WORK = os.path.join(SBAS_ROOT, 'tmp', 'work')
 WORK_STACK = os.path.join(CG_DIR, 'work', 'work_interferogram_stacking')
 BAT_FILE = os.path.join(WORK_DIR, _CFG.get('INTERF_BAT', 'bat/02_interferogram/run_interf.bat'))
+# ---- 多步骤监控（SBAS 五步，按 auxiliary.sml 状态推进）----
+STEPS = [
+    ('step1_connection', ('generate_connection_graph',), '第 1 步 连接图', 'bat/01_connection_graph/run_cg_final.bat'),
+    ('step2_interferogram', ('interf_stack', 'unwrapping'), '第 2 步 干涉+解缠', 'bat/02_interferogram/run_interf.bat'),
+    ('step3_inversion1', ('first_inversion',), '第 3 步 反演1', 'bat/03_inversion/run_inv1.bat'),
+    ('step4_inversion2', ('second_inversion',), '第 4 步 反演2', 'bat/03_inversion/run_inv2.bat'),
+    ('step5_geocode', ('geocod_reflat',), '第 5 步 地理编码', 'bat/04_geocode/run_geocode.bat'),
+]
 LOG = os.path.join(WORKDIR, 'sbas_guard.log')
 CFG_FILE = os.path.join(WORKDIR, 'notify_config.json')
 MAIL_CFG = os.path.join(WORKDIR, 'mail_config.json')
@@ -220,20 +228,31 @@ def completed_pairs():
         return sum(1 for f in os.listdir(WORK_STACK) if f.endswith('_original_sint'))
     return 0
 
-def step_done():
+def sml_step_status():
+    """读 auxiliary.sml 各步骤状态 → {tag: bool}（OK=True / NotOK=False）"""
+    status = {}
     aux = os.path.join(CG_DIR, 'auxiliary.sml')
     try:
-        if os.path.exists(aux):
-            txt = open(aux, encoding='utf-8', errors='replace').read()
-            if '<interf_stack>OK</interf_stack>' in txt:
-                return True
+        txt = open(aux, encoding='utf-8', errors='replace').read()
+        for m in re.finditer(r'<([a-z_]+)>(OK|NotOK)</\1>', txt):
+            status[m.group(1)] = m.group(2) == 'OK'
     except Exception:
         pass
-    for pat in [os.path.join(CG_DIR, 'interferogram_stacking', 'IS_fint_meta*'),
-                os.path.join(SBAS_ROOT, 'interferogram_stacking', 'IS_fint_meta*')]:
-        if glob.glob(pat):
-            return True
-    return False
+    return status
+
+
+def step_done(tags):
+    """指定步骤（一组 auxiliary.sml 标签）是否全部完成"""
+    st = sml_step_status()
+    return all(st.get(t) for t in tags)
+
+
+def current_stage():
+    """当前进行中的步骤索引（第一个未完成的）；全部完成返回 None"""
+    for i, (_, tags, _, _) in enumerate(STEPS):
+        if not step_done(tags):
+            return i
+    return None
 
 def hide_idl_windows():
     """隐藏所有 IDL Workbench 窗口（单次执行 ps1）"""
@@ -264,16 +283,20 @@ def output_size_gb():
 
 def full_report():
     lines = []
-    lines.append(f'SBAS 干涉处理进度汇报  {time.strftime("%Y-%m-%d %H:%M:%S")}')
+    stage = current_stage()
+    stage_txt = f'第 {stage+1}/5 步: {STEPS[stage][2]}' if stage is not None else '全部完成 🎉'
+    lines.append(f'SBAS 处理进度汇报  {time.strftime("%Y-%m-%d %H:%M:%S")}')
     lines.append('-' * 40)
     prog = parse_progress()
     total = count_interf_pairs()
     done = completed_pairs()
     alive = sbas_process_alive()
+    lines.append(f'当前阶段: {stage_txt}')
     lines.append(f'进程状态: {"运行中" if alive else "未运行"}')
     lines.append(f'当前进度: {prog if prog else "(读取中/未开始)"}')
     lines.append(f'已完成干涉对: {done}/{total} ({done/total*100:.1f}%)')
-    lines.append(f'第2步完成: {"是 ✅" if step_done() else "否 ⏳"}')
+    st = sml_step_status()
+    lines.append('步骤状态: ' + ' '.join(f'{n}={"✅" if st.get(t) else "⏳"}' for _, ts, n, _ in STEPS for t in ts[:1]))
     lines.append(f'输出大小: {output_size_gb()}')
     free = disk_free_gb()
     lines.append(f'G盘剩余: {free:.0f}GB')
@@ -325,16 +348,31 @@ def main():
 
     while True:
         try:
-            done = step_done()
-            if done:
+            stage = current_stage()
+            if stage is None:
+                # 全部完成
                 if not _reported_done:
                     _reported_done = True
-                    log('[DONE] 第2步干涉处理完成！')
-                    notify_wechat('干涉处理完成！', full_report())
-                    send_mail('[SBAS] 干涉处理完成 🎉', full_report())
+                    log('[DONE] SBAS 全流程完成！')
+                    notify_wechat('SBAS 全流程完成！', full_report())
+                    send_mail('[SBAS] SBAS 全流程完成 🎉', full_report())
                     open(DONE_FLAG, 'w').write(time.strftime('%Y-%m-%d %H:%M:%S'))
                 time.sleep(POLL_SEC)
                 continue
+
+            if step_done(STEPS[stage][1]):
+                # 当前阶段完成 → 通知，下次循环推进到下一阶段
+                if not _reported_done:
+                    _reported_done = True
+                    log(f'[DONE] {STEPS[stage][2]} 完成！')
+                    notify_wechat(f'{STEPS[stage][2]} 完成！', full_report())
+                time.sleep(POLL_SEC)
+                continue
+            _reported_done = False
+
+            # 当前阶段进行中：绑定该阶段 bat（崩溃自动重启用）
+            global BAT_FILE
+            BAT_FILE = os.path.join(WORK_DIR, STEPS[stage][3])
 
             alive = sbas_process_alive()
             now = time.time()
