@@ -380,10 +380,27 @@ AI 执行要点：
 tail experiment/asf_experiment/sbas_guard.log   # 体检记录（进度/磁盘/异常）
 ```
 
+### 🤖 守护三级唤醒机制（异常/里程碑 → 实时唤醒 AI 推理）
+
+守护在**异常**（停滞/崩溃/磁盘不足）和**阶段完成**时唤醒 AI，三级通道：
+
+```
+wake_ai() →
+  ① pi-web HTTP（装 pi-web 的）：POST /api/agent/<会话id> {type:prompt, message}
+     → URL 自动扫描常见端口发现（兼容任意端口）；会话 id 自动从 /api/sessions 取
+  ② 通用 pi RPC（只装标准 pi 的）：RPC_ENABLED=1 时守护 spawn `pi --mode rpc`，stdin 注入 prompt
+  ③ wake_events.json 兜底：落盘，AI 下次会话检查接手
+```
+
+唤醒消息示例（异常场景 AI 收到后应诊断而非盲从）：
+- 疑似停滞 → AI 查 main_sbas CPU 活跃/trace → 判断真停滞还是误判（内存密集不写盘≠停滞）
+- 崩溃重启 → AI 查 trace 错误/配置 → 决定是否调整
+- 阶段完成 → AI 检查产物质量 → 确认再进下一步
+
 ### ⚠️ 会话启动时必须检查 wake_events（异常/里程碑接手）
 
 守护在异常（停滞/崩溃/磁盘不足）和阶段完成时写入 `asf_experiment/wake_events.json`
-（若配置了 RPC_PIPE 会实时唤醒 AI，未配置则落盘等待）。**AI 每次会话启动时**：
+（三级通道①/②失败时落盘等待）。**AI 每次会话启动时**：
 
 ```bash
 cat experiment/asf_experiment/wake_events.json   # 有 handled:false 的事件？
