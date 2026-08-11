@@ -380,6 +380,19 @@ AI 执行要点：
 tail experiment/asf_experiment/sbas_guard.log   # 体检记录（进度/磁盘/异常）
 ```
 
+### ⚠️ 会话启动时必须检查 wake_events（异常/里程碑接手）
+
+守护在异常（停滞/崩溃/磁盘不足）和阶段完成时写入 `asf_experiment/wake_events.json`
+（若配置了 RPC_PIPE 会实时唤醒 AI，未配置则落盘等待）。**AI 每次会话启动时**：
+
+```bash
+cat experiment/asf_experiment/wake_events.json   # 有 handled:false 的事件？
+```
+
+- **有未处理事件 → 先处理再继续**：诊断（查 trace/CPU/产物）→ 决策（修复/重启/调整）→ 标记 handled
+- **error 类**：优先诊断根因（防误判，如内存密集阶段不写盘≠停滞）
+- **milestone 类**：检查该阶段产物质量，确认后再进下一步
+
 - 进度：`Interf generation [R_x]-[S_y] Progress [NN%]`
 - 异常：崩溃/停滞/磁盘不足会记录并已自动重启/告警
 - 推送策略：Server酱 5 条/天额度只推关键事件（完成/异常/日汇总/启动）

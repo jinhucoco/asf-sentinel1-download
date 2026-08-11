@@ -36,6 +36,7 @@ CFG_FILE = os.path.join(WORKDIR, 'notify_config.json')
 MAIL_CFG = os.path.join(WORKDIR, 'mail_config.json')
 DONE_FLAG = os.path.join(WORKDIR, 'sbas_done.flag')
 PS1_FILE = os.path.join(WORK_DIR, 'hide_idl_window.ps1')
+WAKE_EVENTS = os.path.join(WORKDIR, 'wake_events.json')  # 待 AI 处理事件（下次会话接手）
 REPORT_START = 9 * 60 + 10   # 09:10
 REPORT_END = 18 * 60         # 18:00
 WECHAT_REPORT_TIMES = [(10, 0), (12, 0), (14, 30), (17, 0)]  # 白天 4 次微信进度推送（HH, MM）
@@ -56,6 +57,48 @@ def log(msg):
             f.write(line + '\n')
     except Exception:
         pass
+
+
+def write_wake_event(etype, message, stage=None):
+    """记录待 AI 处理事件（守护无法实时唤醒时，AI 下次会话接手）"""
+    events = []
+    if os.path.exists(WAKE_EVENTS):
+        try:
+            events = json.load(open(WAKE_EVENTS, encoding='utf-8'))
+        except Exception:
+            events = []
+    events.append({
+        'time': time.strftime('%Y-%m-%d %H:%M:%S'),
+        'type': etype,  # error / done / milestone
+        'stage': stage,
+        'message': message,
+        'handled': False,
+    })
+    try:
+        json.dump(events[-20:], open(WAKE_EVENTS, 'w', encoding='utf-8'), ensure_ascii=False, indent=1)
+    except Exception:
+        pass
+
+
+def wake_ai(message, etype='error', stage=None):
+    """唤醒 AI 推理：优先 RPC 实时注入（需 pi --mode rpc 常驻 + RPC_PIPE 配置），
+    失败则写 wake_events 兜底（AI 下次会话检查接手）。
+    异常场景（误判/崩溃/停滞/磁盘）最需要 AI 诊断决策，勿只推送。"""
+    # 1) RPC 实时唤醒（若配置了管道路径）
+    rpc_pipe = _CFG.get('RPC_PIPE', '')
+    if rpc_pipe:
+        try:
+            # Windows 命名管道或文件管道：pi RPC 会话 stdin 重定向处
+            with open(rpc_pipe, 'w', encoding='utf-8') as f:
+                f.write(json.dumps({'type': 'prompt', 'message': message}, ensure_ascii=False) + '\n')
+                f.flush()
+            log(f'[RPC唤醒AI] {message[:50]}')
+            return True
+        except Exception as e:
+            log(f'[RPC唤醒失败→写事件] {e}')
+    # 2) wake_events 兜底
+    write_wake_event(etype, message, stage)
+    return False
 
 # ---------- 配置 ----------
 def load_cfg():
@@ -375,11 +418,13 @@ def main():
                 continue
 
             if step_done(STEPS[stage][1]):
-                # 当前阶段完成 → 通知，下次循环推进到下一阶段
+                # 当前阶段完成 → 通知 + 写事件（AI 可接手分析中间产物），下次循环推进
                 if not _reported_done:
                     _reported_done = True
                     log(f'[DONE] {STEPS[stage][2]} 完成！')
                     notify_wechat(f'{STEPS[stage][2]} 完成！', full_report())
+                    wake_ai(f'{STEPS[stage][2]} 完成！请检查该阶段产物质量（相干/残差/解缠），'
+                            f'确认无误后再进入下一步。', etype='milestone', stage=STEPS[stage][2])
                 time.sleep(POLL_SEC)
                 continue
             _reported_done = False
@@ -408,10 +453,16 @@ def main():
                         log('!!! 重启超过3次，停止自动重启，等待人工干预')
                         notify_wechat('反复崩溃，停止自动重启！',
                                       f'10分钟内重启{_restart_count}次，可能数据/配置问题。\n{trace_error()}')
+                        wake_ai(f'反复崩溃（10 分钟内 {_restart_count} 次）已停止自动重启。'
+                                f'请诊断根因：查 trace 错误、配置、磁盘，给出修复方案。'
+                                f'trace 错误: {trace_error() or "无"}', etype='error', stage='反复崩溃')
                     else:
                         log(f'未发现 envi_idl 进程，自动重启 (第{_restart_count}次)')
                         notify_wechat(f'干涉进程消失，自动重启(第{_restart_count}次)',
                                       f'异常信息: {err or "无错误标记"}\n已拉起新进程。')
+                        wake_ai(f'实验进程消失，守护自动重启第 {_restart_count} 次。'
+                                f'异常信息: {err or "无错误标记"}。请诊断是否有潜在问题，'
+                                f'如需调整（参数/配置）请告知。', etype='error', stage=STEPS[stage][2])
                         restart()
                 _reported_running = False
             else:
@@ -445,6 +496,11 @@ def main():
                 cpu_growth = (cpu_now - _last_cpu) if (cpu_now >= 0 and _last_cpu >= 0) else -1
                 # 反演/合成相位等内存密集阶段可能长时间不写盘，但 CPU 持续增长 = 在计算
                 if t and (now - t) > STALL_MIN * 60 and cpu_growth < 5:
+                    # 先唤醒 AI 诊断（防误判：反演/合成相位内存密集可能长时间不写盘）
+                    wake_ai(f'检测到疑似停滞：{int(now-t)//60} 分钟无文件活动且 CPU 无增长。'
+                            f'请诊断：查 main_sbas CPU 活跃、trace 内容、当前阶段 {STEPS[stage][2]}，'
+                            f'判断是真停滞还是误判，决定是否杀进程重启。',
+                            etype='error', stage=STEPS[stage][2])
                     log(f'干涉停滞 {int(now-t)//60} 分钟且 CPU 无增长，杀进程重启')
                     notify_wechat('干涉停滞，已杀进程重启',
                                   f'工作目录已 {int(now-t)//60} 分钟无活动且 CPU 无增长，守护自动处理。')
@@ -483,6 +539,8 @@ def main():
             free = disk_free_gb()
             if free < 20:
                 notify_wechat('磁盘空间不足！', f'G盘仅剩 {free:.0f}GB，SBAS 处理可能失败，请尽快处理。')
+                wake_ai(f'磁盘空间不足：仅剩 {free:.0f}GB，实验可能失败。请诊断并给出处理方案'
+                        f'（清理/扩容/暂停？）。', etype='error', stage=STEPS[stage][2] if stage is not None else None)
 
             # 微信进度汇报（白天 4 次，内容与邮件一致 = full_report；Server酱额度内）
             # 时间点: 10:00 / 12:00 / 14:30 / 17:00
