@@ -152,13 +152,23 @@ def cpu_seconds():
     except Exception:
         return -1
 
+def _stage_work_dirs():
+    """各阶段 work 目录（停滞检测需覆盖全部，防止误判跨阶段静止）"""
+    dirs = [WORK_STACK]
+    for sub in ['work_first_inversion', 'work_second_inversion', 'work_geocoding']:
+        d = os.path.join(CG_DIR, 'work', sub)
+        if os.path.isdir(d):
+            dirs.append(d)
+    return dirs
+
+
 def work_latest_mtime():
-    """work 目录最新文件活动时间（SARscape 实际产出）"""
+    """全部阶段 work 目录最新文件活动时间（SARscape 实际产出）"""
     latest = 0
-    if os.path.isdir(WORK_STACK):
+    for d in _stage_work_dirs():
         try:
-            for f in os.listdir(WORK_STACK):
-                fp = os.path.join(WORK_STACK, f)
+            for f in os.listdir(d):
+                fp = os.path.join(d, f)
                 try:
                     latest = max(latest, os.path.getmtime(fp))
                 except OSError:
@@ -167,12 +177,16 @@ def work_latest_mtime():
             pass
     return latest
 
+
 def work_file_count():
-    """work 目录文件数（进度推进指标）"""
-    try:
-        return len(os.listdir(WORK_STACK)) if os.path.isdir(WORK_STACK) else 0
-    except OSError:
-        return 0
+    """全部阶段 work 目录文件总数（进度推进指标）"""
+    total = 0
+    for d in _stage_work_dirs():
+        try:
+            total += len(os.listdir(d))
+        except OSError:
+            pass
+    return total
 
 def trace_mtime():
     t = os.path.join(TMP_WORK, 'Process.trace')
@@ -424,13 +438,16 @@ def main():
                     _last_cpu = cpu
                     _last_cpu_time = now
 
-                # ===== 停滞检测（trace/work 目录 45 分钟无活动）=====
+                # ===== 停滞检测（无文件活动 且 CPU 无增长才判停滞）=====
                 work_mtime = work_latest_mtime()
                 t = max(trace_mtime(), work_mtime)
-                if t and (now - t) > STALL_MIN * 60:
-                    log(f'干涉停滞 {int(now-t)//60} 分钟，杀进程重启')
+                cpu_now = cpu_seconds()
+                cpu_growth = (cpu_now - _last_cpu) if (cpu_now >= 0 and _last_cpu >= 0) else -1
+                # 反演/合成相位等内存密集阶段可能长时间不写盘，但 CPU 持续增长 = 在计算
+                if t and (now - t) > STALL_MIN * 60 and cpu_growth < 5:
+                    log(f'干涉停滞 {int(now-t)//60} 分钟且 CPU 无增长，杀进程重启')
                     notify_wechat('干涉停滞，已杀进程重启',
-                                  f'工作目录已 {int(now-t)//60} 分钟无活动，守护自动处理。')
+                                  f'工作目录已 {int(now-t)//60} 分钟无活动且 CPU 无增长，守护自动处理。')
                     run_hidden(['powershell', '-NoProfile', '-Command',
                                 "Stop-Process -Name envi_idl,main_sbas -Force -ErrorAction SilentlyContinue"])
                     time.sleep(5)
