@@ -83,6 +83,57 @@ def write_wake_event(etype, message, stage=None):
 # RPC 会话（通用 pi 唤醒通道，不依赖 pi-web）
 _rpc_proc = None
 _rpc_stdin = None
+# pi-web 发现缓存（自动探测一次记住）
+_piweb_cache = {'url': '', 'sid': ''}
+
+
+def discover_piweb():
+    """自动发现 pi-web：配置 PI_WEB_URL > 环境变量 > 扫描常见端口（验证 /api/sessions）。
+    兼容别人安装的 pi-web（端口不定）。"""
+    if _piweb_cache['url']:
+        return _piweb_cache['url']
+    url = _CFG.get('PI_WEB_URL', '').strip() or os.environ.get('PI_WEB_URL', '').strip()
+    if url:
+        _piweb_cache['url'] = url.rstrip('/')
+        return _piweb_cache['url']
+    # 自动扫描常见端口（pi-web 的 next 端口可能不同）
+    import socket
+    for port in (30141, 3000, 3001, 8080, 4173):
+        try:
+            with socket.create_connection(('127.0.0.1', port), timeout=0.5):
+                pass
+        except OSError:
+            continue
+        try:
+            req = urllib.request.Request(f'http://127.0.0.1:{port}/api/sessions')
+            resp = json.loads(urllib.request.urlopen(req, timeout=2).read().decode('utf-8'))
+            if isinstance(resp, dict) and 'sessions' in resp:
+                _piweb_cache['url'] = f'http://127.0.0.1:{port}'
+                log(f'[pi-web发现] {_piweb_cache["url"]}')
+                return _piweb_cache['url']
+        except Exception:
+            continue
+    return ''
+
+
+def discover_session_id(web):
+    """获取 pi-web 会话 id：配置 > 环境变量 PI_SESSION_ID > /api/sessions 取最近活跃。"""
+    sid = _CFG.get('PI_WEB_SESSION', '').strip() or os.environ.get('PI_SESSION_ID', '').strip()
+    if sid:
+        _piweb_cache['sid'] = sid
+        return sid
+    if _piweb_cache['sid']:
+        return _piweb_cache['sid']
+    try:
+        req = urllib.request.Request(f'{web}/api/sessions')
+        resp = json.loads(urllib.request.urlopen(req, timeout=5).read().decode('utf-8'))
+        sessions = resp.get('sessions') or []
+        if sessions:
+            _piweb_cache['sid'] = sessions[0].get('id', '')
+            return _piweb_cache['sid']
+    except Exception:
+        pass
+    return ''
 
 
 def rpc_enabled():
@@ -122,9 +173,9 @@ def wake_ai(message, etype='error', stage=None):
     """唤醒 AI 推理，三级通道：① pi-web HTTP（PI_WEB_URL）→ ② 通用 pi RPC（RPC_ENABLED）
     → ③ wake_events 兜底（AI 下次会话检查接手）。
     异常场景（误判/崩溃/停滞/磁盘）最需要 AI 诊断决策，勿只推送。"""
-    # 1) pi-web HTTP 唤醒（POST /api/agent/<sid>，body {type:prompt, message}）
-    web = _CFG.get('PI_WEB_URL', '')
-    sid = _CFG.get('PI_WEB_SESSION', '') or os.environ.get('PI_SESSION_ID', '')
+    # 1) pi-web HTTP 唤醒（自动发现 URL/会话，兼容任意端口）
+    web = discover_piweb()
+    sid = discover_session_id(web) if web else ''
     if web and sid:
         try:
             req = urllib.request.Request(
