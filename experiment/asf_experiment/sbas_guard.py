@@ -81,21 +81,25 @@ def write_wake_event(etype, message, stage=None):
 
 
 def wake_ai(message, etype='error', stage=None):
-    """唤醒 AI 推理：优先 RPC 实时注入（需 pi --mode rpc 常驻 + RPC_PIPE 配置），
+    """唤醒 AI 推理：优先 pi-web HTTP API 实时注入（复用当前会话），
     失败则写 wake_events 兜底（AI 下次会话检查接手）。
     异常场景（误判/崩溃/停滞/磁盘）最需要 AI 诊断决策，勿只推送。"""
-    # 1) RPC 实时唤醒（若配置了管道路径）
-    rpc_pipe = _CFG.get('RPC_PIPE', '')
-    if rpc_pipe:
+    # 1) pi-web HTTP 唤醒（POST /api/agent/<sid>，body {type:prompt, message}）
+    web = _CFG.get('PI_WEB_URL', '')
+    sid = _CFG.get('PI_WEB_SESSION', '') or os.environ.get('PI_SESSION_ID', '')
+    if web and sid:
         try:
-            # Windows 命名管道或文件管道：pi RPC 会话 stdin 重定向处
-            with open(rpc_pipe, 'w', encoding='utf-8') as f:
-                f.write(json.dumps({'type': 'prompt', 'message': message}, ensure_ascii=False) + '\n')
-                f.flush()
-            log(f'[RPC唤醒AI] {message[:50]}')
-            return True
+            req = urllib.request.Request(
+                f'{web}/api/agent/{sid}',
+                data=json.dumps({'type': 'prompt', 'message': message}, ensure_ascii=False).encode('utf-8'),
+                headers={'Content-Type': 'application/json'})
+            resp = json.loads(urllib.request.urlopen(req, timeout=10).read().decode('utf-8'))
+            if resp.get('success'):
+                log(f'[唤醒AI] {message[:50]}')
+                return True
+            log(f'[唤醒失败] {resp}')
         except Exception as e:
-            log(f'[RPC唤醒失败→写事件] {e}')
+            log(f'[唤醒失败] {e}')
     # 2) wake_events 兜底
     write_wake_event(etype, message, stage)
     return False
