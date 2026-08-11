@@ -80,9 +80,47 @@ def write_wake_event(etype, message, stage=None):
         pass
 
 
+# RPC 会话（通用 pi 唤醒通道，不依赖 pi-web）
+_rpc_proc = None
+_rpc_stdin = None
+
+
+def rpc_enabled():
+    """RPC_ENABLED 是否启用（'1'/'true'/'yes'/'on' 均为启用）"""
+    return str(_CFG.get('RPC_ENABLED', '')).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def ensure_rpc():
+    """确保通用 pi RPC 会话存在（spawn `pi --mode rpc`，持有 stdin）。
+    配置 RPC_ENABLED=1 时启用；需 pi 命令可用（或 RPC_CMD 指定完整路径）。"""
+    global _rpc_proc, _rpc_stdin
+    if _rpc_proc is not None and _rpc_proc.poll() is None:
+        return True
+    if not rpc_enabled():
+        return False
+    cmd = _CFG.get('RPC_CMD', 'pi')
+    args = [cmd, '--mode', 'rpc']
+    provider = _CFG.get('RPC_PROVIDER', '')
+    model = _CFG.get('RPC_MODEL', '')
+    if provider:
+        args += ['--provider', provider]
+    if model:
+        args += ['--model', model]
+    try:
+        _rpc_proc = subprocess.Popen(args, stdin=subprocess.PIPE,
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                     creationflags=CREATE_NO_WINDOW)
+        _rpc_stdin = _rpc_proc.stdin
+        log('[RPC会话已启动] 通用 pi RPC 唤醒通道就绪')
+        return True
+    except Exception as e:
+        log(f'[RPC启动失败] {e}（需 pi 命令可用，或配置 RPC_CMD 完整路径）')
+        return False
+
+
 def wake_ai(message, etype='error', stage=None):
-    """唤醒 AI 推理：优先 pi-web HTTP API 实时注入（复用当前会话），
-    失败则写 wake_events 兜底（AI 下次会话检查接手）。
+    """唤醒 AI 推理，三级通道：① pi-web HTTP（PI_WEB_URL）→ ② 通用 pi RPC（RPC_ENABLED）
+    → ③ wake_events 兜底（AI 下次会话检查接手）。
     异常场景（误判/崩溃/停滞/磁盘）最需要 AI 诊断决策，勿只推送。"""
     # 1) pi-web HTTP 唤醒（POST /api/agent/<sid>，body {type:prompt, message}）
     web = _CFG.get('PI_WEB_URL', '')
@@ -100,7 +138,16 @@ def wake_ai(message, etype='error', stage=None):
             log(f'[唤醒失败] {resp}')
         except Exception as e:
             log(f'[唤醒失败] {e}')
-    # 2) wake_events 兜底
+    # 2) 通用 pi RPC 唤醒（spawn pi --mode rpc，不依赖 pi-web）
+    if ensure_rpc():
+        try:
+            _rpc_stdin.write(json.dumps({'type': 'prompt', 'message': message}, ensure_ascii=False) + '\n')
+            _rpc_stdin.flush()
+            log(f'[RPC唤醒AI] {message[:50]}')
+            return True
+        except Exception as e:
+            log(f'[RPC唤醒失败] {e}')
+    # 3) wake_events 兜底
     write_wake_event(etype, message, stage)
     return False
 
