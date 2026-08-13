@@ -130,7 +130,8 @@ AI: ① 识别研究区地形 → ② 列该步参数表（含原理）→ ③ �
 asf-sentinel1-download/
 ├── SKILL.md                     # AI 技能定义（frontmatter 触发词 + 工作流）
 ├── scripts/                     # 数据下载 + 配套数据工具（AI 技能执行体）
-│   ├── download.py              # 主下载（搜索/分组/覆盖/校验/下载）
+│   ├── download.py              # 主下载（纯函数：WKT/覆盖/清单）
+│   ├── download_session.py      # DownloadSession 类（认证/搜索/选择/校验/下载编排）
 │   ├── analyze.py / analysis.py # 数据质量分析与清单
 │   ├── multi_download.py        # 多线程分片下载
 │   ├── robust_download.py       # 稳健下载（断点续传）
@@ -139,7 +140,9 @@ asf-sentinel1-download/
 │   ├── requirements.txt         # Python 依赖
 │   └── verify_clone.py          # 全链路验证脚本
 ├── skills/                      # 技能发布镜像（安装机制，测试守护同步）
-├── tests/                       # 47 个单元测试
+├── tests/                       # 48 个单元测试（含镜像一致性）
+├── .github/workflows/test.yml   # CI：pytest + ruff + 语法 + bat 控制字符检查
+├── pyproject.toml / .pre-commit-config.yaml  # ruff 规范 + 提交前自动检查
 ├── experiment/                  # 实验处理（需 ENVI/SARscape）
 │   ├── config.example.env       # 路径配置模板（本机值 config.env 不入库）
 │   ├── config_loader.py         # python 配置读取
@@ -150,7 +153,7 @@ asf-sentinel1-download/
 │   │   ├── 02_interferogram/    # 干涉图生成（第 2 步）
 │   │   └── 03_data_prep/        # GACOS 导入 / DEM / geoid
 │   ├── asf_experiment/          # 守护运行单元（部署整目录到 WORK_DIR/）
-│   │   └── sbas_guard.py        # 守护（体检/汇报/自动重启）
+│   │   └── sbas_guard.py        # 守护 v4（Guardian 类：状态机监控/体检/汇报/自动重启）
 │   ├── tools/                   # 实验辅助（连接图绘制等）
 │   └── sar/dem/                 # 研究区 DEM 配置
 ├── README.md / install.sh / package.json
@@ -174,7 +177,20 @@ asf-sentinel1-download/
 
 - SARscape 批处理通过 `config.env` 读取全部路径，**零硬编码**
 - bat 用 `%~dp0..\..\config.env` 定位配置；python 用 `config_loader.py`
-- 守护 `sbas_guard.py` 独立运行，读 config + notify/mail 配置
+- 守护 `sbas_guard.py` **v4（Guardian 类，状态机）**独立运行：监控状态为实例属性，
+  主循环 `run()`，`restart()` 用实例 bat_file；读 config + notify/mail 配置
+- 下载流程封装为 **`DownloadSession` 类**（download_session.py）：认证/搜索/分组/
+  覆盖过滤/选择/校验/下载拆成可复用方法，`run_download()` 兼容委托
+
+---
+
+## 🛡️ 质量保障（CI + 规范）
+
+- **GitHub Actions CI**：每次 push/PR 自动跑 ①pytest（48 测试）②ruff lint ③ruff format ④全部 Python 语法 ⑤bat 控制字符扫描
+- **ruff**：代码规范统一（pyproject.toml 定制：中文注释/脚本惯用法适配）
+- **pre-commit**：提交前自动 ruff + pytest，防止脏代码进 dev
+- **镜像一致性测试**：`skills/` 发布镜像与根目录脚本必须同步（改一处忘另一处立即报警）
+- **平台兼容**：sanitize_filename 等跨平台处理（Windows/Linux 行为一致）
 
 ---
 
