@@ -34,9 +34,8 @@ def sanitize_filename(fname):
     """只留 basename，拒绝路径分隔符/../绝对路径（防路径穿越）。
 
     平台一致性：Windows 上 os.path.basename 把 ":" 当路径分隔符（a:b.zip->b.zip），
-    Linux 不会；这里显式移除 ":" 保证跨平台行为一致。"""
-    fname = os.path.basename(str(fname or "").replace("\\", "/"))
-    fname = fname.replace(":", "")  # 显式移除盘符冒号（跨平台）
+    Linux 不会；这里先把 ":" 转成 "/" 再 basename，保证跨平台行为一致。"""
+    fname = os.path.basename(str(fname or "").replace("\\", "/").replace(":", "/"))
     if (not fname or fname in (".", "..") or ":" in fname
             or "/" in fname or "\\" in fname or ".." in fname):
         raise ValueError(f"非法文件名: {fname!r}")
