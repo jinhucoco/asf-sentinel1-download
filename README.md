@@ -152,7 +152,6 @@ asf-sentinel1-download/
 │   ├── asf_experiment/          # 守护运行单元（部署整目录到 WORK_DIR/）
 │   │   └── sbas_guard.py        # 守护（体检/汇报/自动重启）
 │   ├── tools/                   # 实验辅助（连接图绘制等）
-│   ├── 配套数据/                # GACOS 收件工具等
 │   └── sar/dem/                 # 研究区 DEM 配置
 ├── README.md / install.sh / package.json
 └── docs/
