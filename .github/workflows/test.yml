@@ -18,11 +18,13 @@ jobs:
 
       - name: Install dependencies
         run: |
+          python --version
           pip install pytest
           pip install -r scripts/requirements.txt
+          python -c "import asf_search, shapely, matplotlib, earthaccess; print('deps ok:', asf_search.__version__, shapely.__version__, matplotlib.__version__)"
 
       - name: Run tests
-        run: python -m pytest tests/ -v
+        run: python -m pytest tests/ -v --tb=long
 
       - name: Syntax check all Python
         run: |
