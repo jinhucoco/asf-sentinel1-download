@@ -13,16 +13,35 @@ copy config.example.env config.env
 # 2. 安装 Python 依赖（下载/配套工具用）
 pip install -r ../scripts/requirements.txt
 
-# 3. 获取数据（可选，用仓库 scripts/ 里的工具）
+# 3. 获取数据（用仓库 scripts/ 里的工具）
 python ../scripts/download.py --aoi 研究区.shp --start 20200101 --end 20251231 --pol VV+VH
 python ../scripts/poeorb_download.py --data-dir %SLC_DATA% --out ./poeorb
 python ../scripts/dem_download.py --aoi 研究区.shp --out ./dem
 python ../scripts/gacos_download.py --bbox "..." --list 时相.txt --time 23:10 --email 你@邮箱 --out ./gacos
+```
 
-# 4. 运行 SARscape 批处理（需安装 ENVI + SARscape + license）
-run_interf.bat        # 干涉图生成（第 2 步）
-run_cg_final.bat      # 连接图生成（第 1 步）
-run_gacos_import.bat  # GACOS 导入
+# 4. 按顺序运行 SARscape 批处理（需安装 ENVI + SARscape + license）
+# 说明：所有 bat 从 experiment/ 下运行（config.env 也在 experiment/），
+#       表内路径相对 experiment/ 目录。
+
+| 步骤 | bat | 说明 |
+|------|-----|------|
+| **第 0 步 导入** | 用 SARscape GUI 导入（Import → EnviSarscapeOriginal）| ⚠️ 当前自动化脚本为占位，需 GUI 手动导入 SLC 为 `*_msc_slc_list` 格式 |
+| 第 1 步 连接图 | `bat/01_connection_graph/run_cg_final.bat` | 生成连接图（先准备 `sar/slc_list.txt`，见下）|
+| 第 2 步 干涉 | `bat/02_interferogram/run_interf.bat` | 干涉 + 解缠 + 掩膜 + GACOS 大气校正 |
+| 第 3 步 反演1 | `bat/03_inversion/run_inv1.bat` | 形变模型 + 残余高程 |
+| 第 4 步 反演2 | `bat/04_geocode/run_inv2.bat` | ⚠️ 注意：此文件在 03_inversion/ 目录 |
+| 第 5 步 地编码 | `bat/04_geocode/run_geocode.bat` | 地理编码（30m 网格 + 矢量 + LOS）|
+
+> ⚠️ **第 0 步导入说明**：SARscape 的 SLC 导入（Import → EnviSarscapeOriginal）目前需在 GUI 手动完成，
+> 导入产物为 `sentinel1_<日期>_<时刻>_IW_D_VV_msc_slc_list` 格式（连接图/干涉都依赖此格式）。
+> `bat/00_import/run_import_slc.bat` 是自动化占位（参数待提取），补全前请用 GUI 导入。
+
+> 💡 **slc_list.txt 准备**：第 1 步连接图读取 `%WORK_DIR%/sar/slc_list.txt`，每行一个导入后的 SLC 完整路径：
+> ```
+> E:/gulangoutdata2/sentinel1_135_20200104_231059343_IW_D_VV_msc_slc_list
+> E:/gulangoutdata2/sentinel1_135_20200209_231058144_IW_D_VV_msc_slc_list
+> ```
 
 # 5. 守护监控（自动体检 + 微信/邮件告警）
 cd asf_experiment && python -u sbas_guard.py
