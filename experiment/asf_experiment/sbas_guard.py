@@ -473,7 +473,7 @@ def restart():
                "Get-Process envi_idl,main_sbas,sarsnt -ErrorAction SilentlyContinue | Stop-Process -Force"])
     time.sleep(3)
     env = dict(os.environ, PYTHONIOENCODING='utf-8')
-    log(f'重启 SBAS 干涉任务（{os.path.basename(BAT_FILE)}）...')
+    log(f'重启 SBAS 任务（{os.path.basename(BAT_FILE)}）...')
     try:
         popen_hidden(['cmd', '/c', BAT_FILE],
                      cwd=WORK_DIR, env=env,
@@ -509,7 +509,15 @@ def main():
         try:
             stage = current_stage()
             if stage is None:
-                # 全部完成
+                # auxiliary.sml 显示全部完成，但 SARscape 进程仍活跃 = 重跑/后处理进行中，
+                # 勿误报 DONE（旧标记 OK 不代表当前没在重算）
+                if sbas_process_alive():
+                    if not _reported_running:
+                        _reported_running = True
+                        log('[INFO] SARscape 进程运行中（疑似重跑/后处理），继续监控不报 DONE')
+                    time.sleep(POLL_SEC)
+                    continue
+                # 真正全部完成（无进程）
                 if not _reported_done:
                     _reported_done = True
                     log('[DONE] SBAS 全流程完成！')
@@ -559,7 +567,7 @@ def main():
                                 f'请诊断根因：查 trace 错误、配置、磁盘，给出修复方案。'
                                 f'trace 错误: {trace_error() or "无"}', etype='error', stage='反复崩溃')
                     else:
-                        log(f'未发现 envi_idl 进程，自动重启 (第{_restart_count}次)')
+                        log(f'未发现 SARscape 进程，自动重启 (第{_restart_count}次)')
                         notify_wechat(f'干涉进程消失，自动重启(第{_restart_count}次)',
                                       f'异常信息: {err or "无错误标记"}\n已拉起新进程。')
                         wake_ai(f'实验进程消失，守护自动重启第 {_restart_count} 次。'

@@ -426,3 +426,76 @@ python scripts/verify_clone.py            # 34 项：仓库完整性/代码健�
 
 - 用户说「帮我配置环境」→ AI 运行 setup_env.py 向导（探测 + 确认）→ 生成 config.env
 - 任一项 [FAIL]，AI 按提示修复并重新验证；全部 [OK] 才继续实验
+## 实验批处理执行（AI 自动运行 bat）
+
+参数确认后，AI 按步骤执行 SARscape 批处理（`experiment/bat/` 五步脚本）：
+
+| 步骤 | bat | 触发对话 |
+|------|-----|---------|
+| 第 1 步 连接图 | `experiment/bat/01_connection_graph/run_cg_final.bat` | 「开始第 1 步」 |
+| 第 2 步 干涉图 | `experiment/bat/02_interferogram/run_interf.bat`（硬编码版 `run_interf_old.bat`） | 「开始第 2 步」 |
+| 第 3 步 反演1 | `experiment/bat/03_inversion/run_inv1.bat` | 「开始第 3 步」 |
+| 第 4 步 反演2 | `experiment/bat/03_inversion/run_inv2.bat` | 「开始第 4 步」 |
+| 第 5 步 地编码 | `experiment/bat/04_geocode/run_geocode.bat` | 「开始第 5 步」 |
+
+AI 执行要点：
+- 硬编码反斜杠路径的 bat（`run_*_old.bat`、`run_inv2.bat`、`run_geocode.bat`）最稳；
+  config 版（for /f 读 config.env）有中文注释 GBK 解析 + IDL 正斜杠风险，优先用硬编码版
+- 执行前检查环境：`python check_environment.py` 全部 [OK]
+- 长任务后台执行，向用户说明预计时长，期间定期查进度（守护日志）
+- 完成/失败均汇报，异常引导用户决策
+
+## ⚠️ SARscape batch 参数名铁律（2026-08-12 实测教训）
+
+**SetParam 参数名必须用官方大写全名（带完整子模块前缀），GUI 面板名 / xsd 小写名都会静默失效**
+（SetParam 返回 0，SARscape 不报错继续用默认参数跑，事后才发现结果不对）：
+
+| ❌ 无效写法（静默失效） | ✅ 有效写法（官方） |
+|------------------------|--------------------|
+| `GRID_SIZE` / `geocode_rg_grid_size` | `GEOCODE_CMD.GEOCODE_RG_GRID_SIZE` |
+| `VELOCITY_THRESHOLD` / `precision_velocity_thr` | `MAIN_INSAR_STACK_SBAS_GEOCODE_CMD.PRECISION_VELOCITY_THR` |
+| `PRODUCT_COHERENCE_THRESHOLD`（geocode 内） | `MAIN_INSAR_STACK_SBAS_GEOCODE_CMD.COHERENCE_THR` |
+| `GENERATE_LOS_FLAG`（缺前缀/小写） | `DISPLACEMENT_PROJECTION_CMD.GENERATE_LOS_FLAG` |
+
+**官方参数模板位置**：
+`C:\Program Files\SARMAP SA\SARscape\auxiliary\envi_extensions\idl\help\SARscape\` 下每个模块有
+`sarmap_sb_*.pro` 示例（如 `sarmap_sb_sbasgeocoding.pro`），含该模块全部 SetParam 调用。
+
+**验证方法**（跑正式 Execute 前必做）：写 verify-only bat，逐个 `SetParam` 后打印 `byte(p)`
+——返回 1 才生效、0 即失效；再 `VerifyParams()` 确认整体通过。**不能只看 Execute 跑起来了**：
+参数名无效时 SARscape 会静默用默认值跑完（如 geocode 默认 14m 网格），事后用产物 `.sml` 的
+`EastingGridSize` 等字段反查才能发现（30m 应 = `0.00025` 度）。
+
+**SARscape 批处理进程架构**：`envi_idl.exe`（IDL 批处理壳，可能先退并打印 EXECUTE:0）+
+`main_sbas.exe`（实际 C++ 计算进程，内存密集峰值 7.3GB）。判断进程是否在跑**必须查 main_sbas**
+（wmic/tasklist 全查，勿只 grep envi_idl），文件持续写入是更可靠的存活信号。
+
+**REBUILD 重跑注意**：重跑某步骤时 auxiliary.sml 仍保留旧 `OK` 标记 → 守护可能误报「全流程完成」
+且停止监控（进程崩溃不自动重启）。重跑期间需人工盯进程，或守护加「进程活跃则不报 DONE」保护
+（已修复于 sbas_guard.py）。
+
+## 守护监控交互（AI 查实验状态）
+
+实验运行期间由守护 `asf_experiment/sbas_guard.py`（仓库中源码在 `experiment/asf_experiment/`）自动监控（30 分钟体检 + 微信/邮件）。
+用户问「实验进展如何」「跑完没」「有没有异常」时，AI 查看守护日志汇报：
+
+```bash
+tail asf_experiment/sbas_guard.log   # 体检记录（进度/磁盘/异常）
+```
+
+- 进度：`Interf generation [R_x]-[S_y] Progress [NN%]`
+- 异常：崩溃/停滞/磁盘不足会记录并已自动重启/告警
+- 推送策略：Server酱 5 条/天额度只推关键事件（完成/异常/日汇总/启动）
+
+## 环境自检与全新用户验证（AI 协助）
+
+新环境（或用户换了机器）时，AI 协助完成：
+
+```bash
+python check_environment.py            # 27 项：config/依赖/路径/软件/磁盘（根目录，或 experiment/check_environment.py）
+python scripts/verify_clone.py         # 34 项：仓库完整性/代码健康/工具可运行
+```
+
+- 用户说「帮我配置环境」→ AI 引导复制 `config.example.env` 为 `config.env` 并逐项填写路径，
+  再运行 `check_environment.py` 验证
+- 任一项 [FAIL]，AI 按提示修复并重新验证；全部 [OK] 才继续实验
