@@ -16,6 +16,11 @@ jobs:
           python-version: '3.12'
           cache: 'pip'
 
+      - name: Install system fonts (matplotlib CJK)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q fonts-noto-cjk
+
       - name: Install dependencies
         run: |
           python --version
