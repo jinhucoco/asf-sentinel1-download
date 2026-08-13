@@ -24,7 +24,7 @@ jobs:
       - name: Install dependencies
         run: |
           python --version
-          pip install pytest
+          pip install pytest ruff
           pip install -r scripts/requirements.txt
           python -c "import asf_search, shapely, matplotlib, earthaccess; print('deps ok:', asf_search.__version__, shapely.__version__, matplotlib.__version__)"
 
@@ -37,6 +37,12 @@ jobs:
             tail -60 /tmp/pytest_out.txt >> $GITHUB_STEP_SUMMARY
           fi
           exit $status
+
+      - name: Ruff lint
+        run: ruff check scripts/ experiment/*.py
+
+      - name: Ruff format check
+        run: ruff format --check scripts/ experiment/*.py
 
       - name: Syntax check all Python
         run: |

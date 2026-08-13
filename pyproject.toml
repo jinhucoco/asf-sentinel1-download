@@ -1,0 +1,34 @@
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+
+[tool.ruff.lint]
+# 规则：E/F（pycodestyle/pyflakes 核心）+ 常用扩展
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+# 忽略：宽泛异常（脚本工具常见，人工判断过）、try-except-pass（有注释的）
+ignore = [
+    "BLE001",   # 宽泛 except Exception（脚本工具允许，已有日志）
+    "SIM115",   # open() 未用 with（脚本一次性读写，安全）
+    "S110",     # try-except-pass（有注释说明）
+    "C401",     # set/list 生成器风格
+    "RUF059",   # 解包风格
+    "PLW1510",  # subprocess 无 check
+    "RUF034",   # 冗余条件（已核实无害）
+    "RUF001",   # 字符串内全角字符混淆（中文项目正常）
+    "RUF002",   # 注释内全角字符（中文注释正常）
+    "RUF003",   # 全角引号（中文文本正常）
+    "E741",     # 变量名 l（脚本常见循环变量，无歧义）
+    "E402",     # import 非顶部（脚本有 sys.path 调整，正常）
+    "E501",     # 行长（中文注释/长字符串，不硬性）
+    "SIM105",   # contextlib.suppress（try-except 更直观）
+    "F821",     # 未定义名（函数内局部 import，已逐个核实为假阳性）
+    "B904",     # except 内 raise from（脚本异常处理已充分）
+    "RUF015",   # next() 替代切片（风格偏好）
+    "UP031",    # % 格式化（与 f-string 共存，脚本常见）
+    "B007",     # 循环变量未用（有下划线语义或索引需要）
+    "SIM102",   # 嵌套 if 合并（可读性优先）
+    "RUF005",   # 列表拼接 vs 解包（可读性优先）
+]
+
+[tool.ruff.format]
+quote-style = "double"
