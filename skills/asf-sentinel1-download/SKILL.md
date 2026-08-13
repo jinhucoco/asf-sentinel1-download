@@ -254,6 +254,13 @@ python scripts/multi_download.py \
 - 挂机建议：配合守护循环（检测进程死/卡死自动重启），日志在 `--out/multi_download.log`
 - 适合 SBAS 全量时间序列（几百 GB 量级），耗时由网络决定，勿催
 
+## 下载流程架构（v2 重构）
+
+`scripts/download.py` 的下载主流程已封装为 **`DownloadSession` 类**（`scripts/download_session.py`）：
+认证 → 搜索 → 分组 → 覆盖过滤 → 选择轨道组 → 校验（轨道一致性/逐时相覆盖）→ 批量下载
+（HTTPS + host 白名单校验，防 SSRF/token 泄露）拆成可复用实例方法。
+`run_download()` 保留为兼容包装（委托 `DownloadSession.run()`），原 v1 逻辑存于 `_run_download_v1`。
+
 ## 常见错误
 
 | 问题 | 处理 |
@@ -374,6 +381,8 @@ AI 执行要点：
 ## 守护监控交互（AI 查实验状态）
 
 实验运行期间由守护 `experiment/asf_experiment/sbas_guard.py` 自动监控（30 分钟体检 + 微信/邮件）。
+**v4（2026-08-13 重构）**：守护已封装为 `Guardian` 类（状态机）——监控状态（阶段/CPU/重启计数）
+是实例属性，主循环是 `run()`，`restart()` 用实例 `bat_file`。模块级工具函数（无状态）不变。
 用户问「实验进展如何」「跑完没」「有没有异常」时，AI 查看守护日志汇报：
 
 ```bash
@@ -426,24 +435,7 @@ python scripts/verify_clone.py            # 34 项：仓库完整性/代码健�
 
 - 用户说「帮我配置环境」→ AI 运行 setup_env.py 向导（探测 + 确认）→ 生成 config.env
 - 任一项 [FAIL]，AI 按提示修复并重新验证；全部 [OK] 才继续实验
-## 实验批处理执行（AI 自动运行 bat）
 
-参数确认后，AI 按步骤执行 SARscape 批处理（`experiment/bat/` 五步脚本）：
-
-| 步骤 | bat | 触发对话 |
-|------|-----|---------|
-| 第 1 步 连接图 | `experiment/bat/01_connection_graph/run_cg_final.bat` | 「开始第 1 步」 |
-| 第 2 步 干涉图 | `experiment/bat/02_interferogram/run_interf.bat`（硬编码版 `run_interf_old.bat`） | 「开始第 2 步」 |
-| 第 3 步 反演1 | `experiment/bat/03_inversion/run_inv1.bat` | 「开始第 3 步」 |
-| 第 4 步 反演2 | `experiment/bat/03_inversion/run_inv2.bat` | 「开始第 4 步」 |
-| 第 5 步 地编码 | `experiment/bat/04_geocode/run_geocode.bat` | 「开始第 5 步」 |
-
-AI 执行要点：
-- 硬编码反斜杠路径的 bat（`run_*_old.bat`、`run_inv2.bat`、`run_geocode.bat`）最稳；
-  config 版（for /f 读 config.env）有中文注释 GBK 解析 + IDL 正斜杠风险，优先用硬编码版
-- 执行前检查环境：`python check_environment.py` 全部 [OK]
-- 长任务后台执行，向用户说明预计时长，期间定期查进度（守护日志）
-- 完成/失败均汇报，异常引导用户决策
 
 ## ⚠️ SARscape batch 参数名铁律（2026-08-12 实测教训）
 
@@ -473,29 +465,3 @@ AI 执行要点：
 **REBUILD 重跑注意**：重跑某步骤时 auxiliary.sml 仍保留旧 `OK` 标记 → 守护可能误报「全流程完成」
 且停止监控（进程崩溃不自动重启）。重跑期间需人工盯进程，或守护加「进程活跃则不报 DONE」保护
 （已修复于 sbas_guard.py）。
-
-## 守护监控交互（AI 查实验状态）
-
-实验运行期间由守护 `asf_experiment/sbas_guard.py`（仓库中源码在 `experiment/asf_experiment/`）自动监控（30 分钟体检 + 微信/邮件）。
-用户问「实验进展如何」「跑完没」「有没有异常」时，AI 查看守护日志汇报：
-
-```bash
-tail asf_experiment/sbas_guard.log   # 体检记录（进度/磁盘/异常）
-```
-
-- 进度：`Interf generation [R_x]-[S_y] Progress [NN%]`
-- 异常：崩溃/停滞/磁盘不足会记录并已自动重启/告警
-- 推送策略：Server酱 5 条/天额度只推关键事件（完成/异常/日汇总/启动）
-
-## 环境自检与全新用户验证（AI 协助）
-
-新环境（或用户换了机器）时，AI 协助完成：
-
-```bash
-python check_environment.py            # 27 项：config/依赖/路径/软件/磁盘（根目录，或 experiment/check_environment.py）
-python scripts/verify_clone.py         # 34 项：仓库完整性/代码健康/工具可运行
-```
-
-- 用户说「帮我配置环境」→ AI 引导复制 `config.example.env` 为 `config.env` 并逐项填写路径，
-  再运行 `check_environment.py` 验证
-- 任一项 [FAIL]，AI 按提示修复并重新验证；全部 [OK] 才继续实验

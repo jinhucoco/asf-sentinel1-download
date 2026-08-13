@@ -314,6 +314,17 @@ def group_by_orbit(results):
 
 
 def run_download(aoi_path, start, end, polarizations, out_dir, max_results=None, config=None):
+    """兼容包装：委托 DownloadSession（v2 重构，见 download_session.py）。
+    原 v1 长流程逻辑已封装为 DownloadSession 类（认证/搜索/选择/校验/下载拆成方法）。"""
+    from download_session import DownloadSession
+
+    return DownloadSession(config=config).run(
+        aoi_path, start, end, polarizations, out_dir, max_results=max_results
+    )
+
+
+# ==================== 历史 v1 实现（保留供参考/回退）====================
+def _run_download_v1(aoi_path, start, end, polarizations, out_dir, max_results=None, config=None):
     """AOI→WKT → 认证 → 搜索全部方向 → (方向,轨道)分组 → 覆盖过滤 →
     用户选轨道组 → 清单 → 确认 → 批量下载。
 

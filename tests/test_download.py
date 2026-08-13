@@ -303,11 +303,9 @@ def test_check_download_url():
 
 
 def test_path_consistency_check():
-    """轨道一致性校验：同 frame 不同轨道应被拒绝"""
+    """轨道一致性校验：同 frame 不同轨道应被拒绝（DownloadSession.validate）"""
     import io, contextlib
     from download import run_download
-    # 构造含多轨道的 results 模拟（直接测 run_download 的校验逻辑）
-    # 用 monkeypatch 模拟认证/搜索，验证校验拦截
     class FakeProps:
         def __init__(self, path):
             self.properties = {'pathNumber': path}
