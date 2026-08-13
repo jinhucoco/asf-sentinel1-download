@@ -423,20 +423,22 @@ def hide_idl_windows():
         pass
 
 def disk_free_gb():
+    """结果盘剩余（跨平台：shutil.disk_usage，不再依赖 Unix df）"""
     try:
-        out = run_hidden(['df', '-h', '/g'], text=True).stdout
-        for line in out.split('\n'):
-            parts = line.split()
-            if len(parts) >= 4 and parts[0] == 'G:':
-                return float(parts[3].replace('G', ''))
+        import shutil
+        return shutil.disk_usage(SBAS_ROOT).free / 1024**3
     except Exception:
         pass
     return 999
 
+
 def output_size_gb():
+    """输出目录大小（Windows 兼容：du 是 Unix 命令，用 PowerShell 查询）"""
     try:
-        out = run_hidden(['du', '-sh', SBAS_ROOT], text=True).stdout
-        return out.split()[0] if out else '?'
+        out = run_hidden(['powershell', '-NoProfile', '-Command',
+                          f"$s=(Get-ChildItem '{SBAS_ROOT}' -Recurse -ErrorAction SilentlyContinue | Measure-Object -Property Length -Sum).Sum; [math]::Round($s/1GB,1)"],
+                         text=True).stdout.strip()
+        return f'{out}G' if out else '?'
     except Exception:
         return '?'
 
