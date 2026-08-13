@@ -44,7 +44,7 @@ def main():
     os.makedirs(args.out, exist_ok=True)
     wkt = aoi_to_wkt(args.aoi)
     session = ASFSession()
-    session.auth_with_creds(cfg ['username' ],cfg['password'])
+    session.auth_with_creds(cfg['username'],cfg['password'])
     print('[OK] 认证成功')
 
     all_results = []

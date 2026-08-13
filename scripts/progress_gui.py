@@ -87,7 +87,7 @@ class DownloadProgress:
                 msg = self._q.get_nowait()
                 kind=msg.get ( 'kind' )
                 if kind == 'progress':
-                    self.cur_bar['value' ]=msg ['cur_pct' ] * 100
+                    self.cur_bar['value']=msg ['cur_pct'] * 100
                     self.lbl_cur_pct.config(text=f'{msg["cur_pct"] * 100:.1f}%')
                     self.total_bar['value'] = msg['tot_pct'] * 100
                     self.lbl_total_pct.config(

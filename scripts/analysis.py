@@ -106,7 +106,7 @@ def analyze_frame_coverage(wkt_aoi, products):
         by_frame[p.properties.get('frameNumber', '?')].append(p)
 
     result = {}
-    for fr ,prods in sorted ( by_frame.items (),key =lambda kv:- len ( kv[ 1 ])) :
+    for fr ,prods in sorted ( by_frame.items (),key =lambda kv:- len ( kv[ 1])) :
         dates = sorted(str(p.properties.get('startTime', ''))[:10] for p in prods)
 
         fp = shape(prods[0].geometry) if prods[0].geometry else None
@@ -166,7 +166,7 @@ def sample_by_frequency(products, frequency='monthly', rule='first'):
             continue
         if rule == 'first':
 
-            target =dates[ 0 ]
+            target =dates[ 0]
         elif rule=='last' :
             target =dates [- 1]
         else:  # middle
@@ -284,7 +284,7 @@ def plot_coverage(wkt_aoi, products, out_path, title='影像覆盖 vs 研究区'
     from shapely.geometry import shape
     from shapely.wkt import loads
 
-    plt.rcParams ['font.sans-serif'] = [ 'Microsoft YaHei','SimHei','Arial Unicode MS']
+    plt.rcParams ['font.sans-serif'] = ['Microsoft YaHei','SimHei','Arial Unicode MS']
     plt.rcParams['axes.unicode_minus'] = False
 
     aoi= loads ( wkt_aoi)
@@ -300,7 +300,7 @@ def plot_coverage(wkt_aoi, products, out_path, title='影像覆盖 vs 研究区'
 
     fig, ax = plt.subplots(1, 1, figsize=(12, 10), dpi=120)
     colors=cm.tab10.colors
-    combo_list= sorted( combos.items (), key = lambda kv:-len (kv [ 1 ] ))
+    combo_list= sorted( combos.items (), key = lambda kv:-len (kv [ 1] ))
 
     for i, ((path, fr), prods) in enumerate(combo_list):
         fp=shape( prods [ 0].geometry )

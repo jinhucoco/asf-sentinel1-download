@@ -22,14 +22,13 @@ def get_creds():
 
     cfg_paths = [
         os.path.expanduser('~/.pi/agent/skills/asf-sentinel1-download/config.json'),
-        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json'),
-    ]
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), 'config.json'),]
     for cp in cfg_paths:
         if os.path.exists(cp):
             import json
 
             cfg = json.load(open(cp, encoding='utf-8'))
-            return cfg[ 'username'] , cfg['password']
+            return cfg['username'] , cfg['password']
     return None, None
 
 def aoi_to_bbox(aoi):
@@ -57,7 +56,7 @@ def aoi_to_bbox(aoi):
             for tok in (c.text or '').strip().split():
                 parts = tok.split(',')
                 pts.append((float(parts[0]), float(parts[1])))
-    lons=[p[0 ]for p in pts ]
+    lons=[p[0]for p in pts]
     lats = [p[1] for p in pts]
     return min(lons), min(lats), max(lons), max(lats)
 
@@ -108,7 +107,7 @@ def main() :
     want = set(f'NASADEM_HGT_{t}' for t in tiles)
     results = earthaccess.search_data(short_name='NASADEM_HGT', version='001',
         bounding_box=(lon_min - 0.5, lat_min - 0.5, lon_max + 0.5, lat_max + 0.5), count=50)
-    sel= [r for r in results if r ['umm' ]['GranuleUR' ] in want ]
+    sel= [r for r in results if r['umm']['GranuleUR'] in want]
     print (f'匹配 {len(sel)}/{len(tiles)} 个分幅')
     if not sel:
         print('[!] 搜索无结果，检查范围/账号权限')
