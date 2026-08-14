@@ -1,0 +1,70 @@
+name: test
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install system fonts (matplotlib CJK)
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y -q fonts-noto-cjk
+
+      - name: Install dependencies
+        run: |
+          python --version
+          pip install pytest ruff
+          pip install -r scripts/requirements.txt
+          python -c "import asf_search, shapely, matplotlib, earthaccess; print('deps ok:', asf_search.__version__, shapely.__version__, matplotlib.__version__)"
+
+      - name: Run tests
+        run: |
+          python -m pytest tests/ -v --tb=long 2>&1 | tee /tmp/pytest_out.txt
+          status=${PIPESTATUS[0]}
+          if [ $status -ne 0 ]; then
+            echo '### Pytest FAILED (last 60 lines)' >> $GITHUB_STEP_SUMMARY
+            tail -60 /tmp/pytest_out.txt >> $GITHUB_STEP_SUMMARY
+          fi
+          exit $status
+
+      - name: Ruff lint
+        run: ruff check scripts/ experiment/*.py
+
+      - name: Ruff format check
+        run: ruff format --check scripts/ experiment/*.py
+
+      - name: Syntax check all Python
+        run: |
+          set -e
+          for f in $(find . -name '*.py' -not -path './.git/*' -not -path '*/__pycache__/*'); do
+            python -m py_compile "$f"
+          done
+          echo "All Python syntax OK"
+
+      - name: Check bat control chars (Windows-only files, scan only)
+        run: |
+          python - <<'EOF'
+          import glob
+          bad = []
+          for f in glob.glob('experiment/bat/**/*.bat', recursive=True):
+              d = open(f, 'rb').read()
+              n = sum(d.count(c) for c in (b'\x07', b'\x08', b'\x09'))
+              if n:
+                  bad.append(f'{f}: {n}')
+          if bad:
+              print('BAT control-char corruption found:')
+              print('\n'.join(bad))
+              raise SystemExit(1)
+          print('All bat files clean (no \\b \\a \\t corruption)')
+          EOF
