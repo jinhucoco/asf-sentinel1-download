@@ -1,5 +1,5 @@
 ---
-name: asf-sentinel1-download
+name: insar-genie
 description: >
   SBAS-InSAR 全链路 AI 技能：从 Sentinel-1 数据下载、配套数据（DEM/GACOS/POEORB）
   获取，到 SARscape 实验参数确认与批处理执行，再到守护监控，全程 AI 与用户对话交互、

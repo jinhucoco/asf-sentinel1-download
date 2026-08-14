@@ -8,7 +8,7 @@
 #   3. 初始化 Earthdata 凭证配置（config.json）
 #
 # 用法（一条命令）：
-#   curl -fsSL https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/jinhucoco/insar-genie/main/install.sh | bash
 #
 # 或本地运行：
 #   bash install.sh
@@ -22,11 +22,11 @@
 set -euo pipefail
 
 # ---------- 配置 ----------
-SKILL_NAME="asf-sentinel1-download"
-REPO_URL="https://github.com/jinhucoco/asf-sentinel1-download"
-RAW_URL="https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main"
-ZIP_URL="https://github.com/jinhucoco/asf-sentinel1-download/releases/latest/download/asf-sentinel1-download-skill.zip"
-ZIP_FETCH_URL="https://codeload.github.com/jinhucoco/asf-sentinel1-download/zip/refs/heads/main"
+SKILL_NAME="insar-genie"
+REPO_URL="https://github.com/jinhucoco/insar-genie"
+RAW_URL="https://raw.githubusercontent.com/jinhucoco/insar-genie/main"
+ZIP_URL="https://github.com/jinhucoco/insar-genie/releases/latest/download/insar-genie-skill.zip"
+ZIP_FETCH_URL="https://codeload.github.com/jinhucoco/insar-genie/zip/refs/heads/main"
 PYDEPS=(asf_search pyshp shapely defusedxml matplotlib)
 
 # ---------- 颜色 ----------
@@ -70,7 +70,7 @@ download_repo_zip() {
     return 1
   fi
   unzip -q "$zip_path" -d "$dest_dir" || return 1
-  out_dir="$dest_dir/asf-sentinel1-download-main"
+  out_dir="$dest_dir/insar-genie-main"
   [ -f "$out_dir/SKILL.md" ] || return 1
   echo "$out_dir"
 }
@@ -171,7 +171,7 @@ if [ "$DRY_RUN" = 1 ]; then
   echo "====================================================="
   echo "  curl -fsSL $RAW_URL/install.sh | bash"
   echo ""
-  echo "  或浏览器下载 zip，解压后把 asf-sentinel1-download 文件夹"
+  echo "  或浏览器下载 zip，解压后把 insar-genie 文件夹"
   echo "  放入对应 skills 目录（~/.codex/skills/ 等）："
   echo "  $ZIP_URL"
   echo "====================================================="
@@ -188,7 +188,7 @@ if [ "$SANDBOX_BLOCKED" = 1 ]; then
   echo "  解决办法（任选其一）："
   echo "  1) 在【宿主终端】（非 AI 沙箱）执行:"
   echo "     curl -fsSL $RAW_URL/install.sh | bash"
-  echo "  2) 浏览器下载 zip，解压后把 asf-sentinel1-download 文件夹"
+  echo "  2) 浏览器下载 zip，解压后把 insar-genie 文件夹"
   echo "     放入 ~/.codex/skills/（或 ~/.claude/skills/、~/.pi/agent/skills/）:"
   echo "     $ZIP_URL"
   echo "  3) 若确需在沙箱内安装，请为 Codex 配置:"

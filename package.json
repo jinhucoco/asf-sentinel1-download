@@ -15,21 +15,21 @@
   "author": "jinhucoco",
   "license": "MIT",
   "scripts": {
-    "prepack": "node -e \"const fs=require('fs');['scripts/__pycache__','skills/asf-sentinel1-download/scripts/__pycache__'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\""
+    "prepack": "node -e \"const fs=require('fs');['scripts/__pycache__','skills/insar-genie/scripts/__pycache__'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch(e){}})\""
   },
-  "homepage": "https://github.com/jinhucoco/asf-sentinel1-download",
+  "homepage": "https://github.com/jinhucoco/insar-genie",
   "repository": {
     "type": "git",
-    "url": "https://github.com/jinhucoco/asf-sentinel1-download.git"
+    "url": "https://github.com/jinhucoco/insar-genie.git"
   },
   "bugs": {
-    "url": "https://github.com/jinhucoco/asf-sentinel1-download/issues"
+    "url": "https://github.com/jinhucoco/insar-genie/issues"
   },
   "pi": {
     "skills": [
       "./skills"
     ],
-    "image": "https://raw.githubusercontent.com/jinhucoco/asf-sentinel1-download/main/docs/coverage_orbit135.png",
+    "image": "https://raw.githubusercontent.com/jinhucoco/insar-genie/main/docs/coverage_orbit135.png",
     "install": "pip install -r scripts/requirements.txt"
   },
   "files": [
