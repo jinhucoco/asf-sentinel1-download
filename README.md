@@ -1,10 +1,33 @@
 # SBAS-InSAR 全链路自动化
 
-**一个给 AI 工具（pi / Codex / Claude Code / Cursor）用的技能 + 实验全链路流水线**：
+**一个给 AI 工具（DSH / pi / Codex / Claude Code / Cursor）用的技能 + 实验全链路流水线**：
 在对话里说出需求，AI 自动从 ASF 下载 Sentinel-1 数据、获取配套数据（DEM/GACOS/POEORB）、
 基于ENVI和SARscape完成 SBAS-InSAR 全流程，并有守护进程全程自动监控汇报。
 
-> 仓库结构：`SKILL.md`（AI 技能定义）+ `scripts/`（下载/配套工具）+ `experiment/`（SARscape 批处理 + 守护）+ 环境自检 + 验证脚本。
+> 仓库结构：`SKILL.md`（AI 技能定义）+ `scripts/`（下载/配套工具）+ `experiment/`（SARscape 批处理 + 守护）+ `dsh/`（DSH 社区插件）+ 环境自检 + 验证脚本。
+
+---
+
+## 🧩 DSH 用户：一键安装为插件（SBAS 全链路）
+
+在 **DeepSeek Harness (DSH)** 工作台中，本仓库直接以 **agent preset 插件** 形式安装：
+安装后新建会话选择「**SBAS 全链路**」模式，AI 即自动携带 insar-genie 技能（下载/配套/实验/监控全部脚本），对话即用。
+
+```bash
+# Windows（PowerShell）
+powershell -Command "irm https://raw.githubusercontent.com/jinhucoco/insar-genie/main/dsh/install-dsh.ps1 | iex"
+
+# macOS / Linux
+curl -fsSL https://raw.githubusercontent.com/jinhucoco/insar-genie/main/dsh/install-dsh.sh | bash
+```
+
+安装后：
+1. 打开 DSH Web 界面 → 点击「新建会话」
+2. 选择模式（preset）: **SBAS 全链路**
+3. 对话中说「配置 ASF 账号密码」→ 引导填写 Earthdata 凭证，即可开始
+
+> 卸载：删除 `~/.dsh/.agent-presets/insar-genie/` 目录即可。
+> 源码位置：仓库 `dsh/insar-genie/`（agent.cordis.yml + preset.yml + 自带技能），安装脚本 `dsh/install-dsh.ps1` / `dsh/install-dsh.sh`。
 
 ---
 
