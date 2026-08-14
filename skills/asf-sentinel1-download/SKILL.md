@@ -370,7 +370,7 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 | 第 3 步 反演1 | `experiment/bat/03_inversion/run_inv1.bat` | 「开始第 3 步」 |
 | 第 4 步 反演2 | `experiment/bat/03_inversion/run_inv2.bat` | 「开始第 4 步」 |
 | 第 5 步 地理编码 | `experiment/bat/04_geocode/run_geocode.bat` | 「开始第 5 步」 |
-| 第 0 步 SLC 导入 | `experiment/bat/00_import/run_import_slc.bat`（参数待提取）| 「导入数据」 |
+| 第 0 步 SLC 导入 | `experiment/bat/00_import/run_import_slc.bat`（ImportSentinel1Format，支持 ROI 裁剪/极化可选，verify 模式校验）| 「导入数据」 |
 
 AI 执行要点：
 - 每个 bat 从 `config.env` 读路径（若未配置先提示 `copy config.example.env config.env`）
