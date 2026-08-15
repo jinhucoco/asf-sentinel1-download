@@ -46,7 +46,7 @@ curl -fsSL https://raw.githubusercontent.com/jinhucoco/insar-genie/main/dsh/inst
 ### 🤖 pi — npm 技能包
 
 ```bash
-pi install npm:pi-asf-sentinel1-slc
+pi install npm:insar-genie
 ```
 
 安装后新会话自动注册技能（已开会话需 `/reload` 或重开会话）。
@@ -129,51 +129,6 @@ AI: ① 识别研究区地形 → ② 列该步参数表（含原理）→ ③ �
 ```
 
 守护能力：30 分钟自动体检 + 微信（Server酱）/邮件汇报 + 崩溃自动重启 + 磁盘/停滞预警（5 条/天额度内只推关键事件）。
-
----
-
-## 📁 文件结构（File Structure）
-
-```
-insar-genie/
-├── SKILL.md                     # AI 技能定义（frontmatter 触发词 + 工作流）
-├── scripts/                     # 数据下载 + 配套数据工具（AI 技能执行体）
-│   ├── download.py              # 主下载（纯函数：WKT/覆盖/清单）
-│   ├── download_session.py      # DownloadSession 类（认证/搜索/选择/校验/下载编排）
-│   ├── analyze.py / analysis.py # 数据质量分析与清单
-│   ├── multi_download.py        # 多线程分片下载
-│   ├── robust_download.py       # 稳健下载（断点续传）
-│   ├── poeorb_download.py / gacos_download.py / gacos_fetch.py / dem_download.py
-│   ├── progress_gui.py          # 桌面进度条
-│   ├── requirements.txt         # Python 依赖
-│   └── verify_clone.py          # 全链路验证脚本
-├── skills/                      # 技能发布镜像（安装机制，测试守护同步）
-├── tests/                       # 48 个单元测试（含镜像一致性）
-├── .github/workflows/test.yml   # CI：pytest + ruff + 语法 + bat 控制字符检查
-├── pyproject.toml / .pre-commit-config.yaml  # ruff 规范 + 提交前自动检查
-├── dsh/                         # DSH 社区插件（agent preset + 安装脚本）
-│   ├── insar-genie/             #   preset 包（agent.cordis.yml + preset.yml + 自带技能镜像）
-│   ├── install-dsh.ps1 / install-dsh.sh
-├── experiment/                  # 实验处理（需 ENVI/SARscape）
-│   ├── config.example.env       # 路径配置模板（本机值 config.env 不入库）
-│   ├── config_loader.py         # python 配置读取
-│   ├── check_environment.py     # 环境自检（27 项）
-│   ├── setup_env.py             # 环境配置向导（自动探测路径）
-│   ├── README.md                # 实验区说明
-│   ├── bat/                     # SARscape 批处理（按步骤分类）
-│   │   ├── 00_import/           # SLC 导入（第 0 步，ROI 裁剪/极化可选）
-│   │   ├── 01_connection_graph/ # 连接图（第 1 步）
-│   │   ├── 02_interferogram/    # 干涉图生成（第 2 步）
-│   │   ├── 03_data_prep/        # GACOS 导入 / DEM / geoid
-│   │   ├── 03_inversion/        # 反演 Step1 + Step2（第 3 步）
-│   │   └── 04_geocode/          # 地理编码（第 5 步）
-│   ├── asf_experiment/          # 守护运行单元（部署整目录到 WORK_DIR/）
-│   │   └── sbas_guard.py        # 守护 v4（Guardian 类：状态机监控/体检/汇报/自动重启）
-│   ├── tools/                   # 实验辅助（连接图绘制等）
-│   └── sar/dem/                 # 研究区 DEM 配置
-├── README.md / install.sh / package.json / config.example.json / LICENSE
-└── docs/                        # 文档与示意图
-```
 
 ---
 
