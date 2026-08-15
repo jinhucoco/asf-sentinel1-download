@@ -274,9 +274,7 @@ def main():
 
             wkt = aoi_to_wkt(args.verify_aoi)
             log(f"[VERIFY] 逐时相覆盖复检开始: {args.verify_aoi}（{len(rows)} 文件）", logfile)
-            ok_dates, bad_dates = verify_download_list(
-                wkt, rows, log=lambda m: log(m, logfile)
-            )
+            ok_dates, bad_dates = verify_download_list(wkt, rows, log=lambda m: log(m, logfile))
             log(f"[VERIFY] 通过 {len(ok_dates)} 时相 / 未达标 {len(bad_dates)} 时相", logfile)
             for date, ratio in bad_dates:
                 log(f"[VERIFY]  ⚠ {date}: 并集覆盖 {ratio:.2%} —— 需补帧后重下", logfile)
