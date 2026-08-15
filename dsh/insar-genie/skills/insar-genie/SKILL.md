@@ -254,6 +254,23 @@ python scripts/multi_download.py \
 - 挂机建议：配合守护循环（检测进程死/卡死自动重启），日志在 `--out/multi_download.log`
 - 适合 SBAS 全量时间序列（几百 GB 量级），耗时由网络决定，勿催
 
+### ⚠️ 裁剪/自定义清单必须复检（2026-08-15 实测教训）
+
+`analyze.py` 的逐时相覆盖校验用的是**搜索返回的全部帧**；若为了省磁盘手工
+裁剪清单（如跳过搭边冗余帧只留主覆盖帧），**裁剪后的清单必须下载前复核**——
+单帧足迹会随轨道微变，个别时相主帧可能覆盖不足（实测 2025-02-06：帧 463 单帧
+仅覆盖研究区 90.2%，补相邻帧 468 后并集才 100%）。
+
+```bash
+# 清单驱动 + 下载前逐时相覆盖复检（未达标时相告警；--strict 则终止）
+python scripts/multi_download.py \
+  --list 裁剪后清单.csv --out <下载目录> --verify-aoi 研究区.shp [--strict]
+```
+
+复检输出每个时相并集覆盖率；`⚠ 时相: 并集覆盖 xx%` 的时相需补帧后重新生成清单。
+底层实现：`analysis.verify_download_list()`（granule_search 取真实 footprint，
+按清单逐时相并集覆盖检查）+ `analysis.per_date_coverage_report()`（纯函数）。
+
 ## 下载流程架构（v2 重构）
 
 `scripts/download.py` 的下载主流程已封装为 **`DownloadSession` 类**（`scripts/download_session.py`）：

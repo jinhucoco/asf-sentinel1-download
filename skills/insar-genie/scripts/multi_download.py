@@ -237,6 +237,16 @@ def main():
     ap.add_argument("--track", type=int, help="指定轨道号（跳过交互选择）")
     ap.add_argument("--out", default="./sentinel1_data", help="下载目录")
     ap.add_argument("--threads", type=int, default=DEFAULT_THREADS, help="分片线程数")
+    ap.add_argument(
+        "--verify-aoi",
+        help="清单驱动模式：下载前用该 shp/kml 对清单做逐时相覆盖复检"
+        "（裁剪/自定义清单必用，防单帧覆盖不足时相漏检）",
+    )
+    ap.add_argument(
+        "--strict",
+        action="store_true",
+        help="配合 --verify-aoi：存在未达标时相时终止下载（默认仅告警）",
+    )
     args = ap.parse_args()
 
     if not args.list and not (args.aoi and args.start and args.end):
@@ -257,6 +267,22 @@ def main():
         with open(args.list, encoding="utf-8-sig") as f:
             rows = list(csv.DictReader(f))
         log(f"清单驱动: {len(rows)} 条", logfile)
+        # 逐时相覆盖复检：裁剪/自定义清单必须下载前复核（2025-02-06 案例：
+        # analyze 全量校验用搜索全部帧，裁剪掉冗余帧后单帧不足时相会漏检）
+        if args.verify_aoi:
+            from analysis import verify_download_list
+
+            wkt = aoi_to_wkt(args.verify_aoi)
+            log(f"[VERIFY] 逐时相覆盖复检开始: {args.verify_aoi}（{len(rows)} 文件）", logfile)
+            ok_dates, bad_dates = verify_download_list(
+                wkt, rows, log=lambda m: log(m, logfile)
+            )
+            log(f"[VERIFY] 通过 {len(ok_dates)} 时相 / 未达标 {len(bad_dates)} 时相", logfile)
+            for date, ratio in bad_dates:
+                log(f"[VERIFY]  ⚠ {date}: 并集覆盖 {ratio:.2%} —— 需补帧后重下", logfile)
+            if bad_dates and args.strict:
+                log("[VERIFY] strict 模式：存在未达标时相，终止下载", logfile)
+                sys.exit(1)
     else:
         pols = [parse_polarization(p) for p in args.pol.split(",")]
         groups, _ = search_and_group(args.aoi, args.start, args.end, pols)

@@ -53,6 +53,88 @@ def check_per_date_coverage(wkt_aoi, products):
     return ok_dates, bad_dates
 
 
+# ==================== 裁剪清单复检 ====================
+
+
+def per_date_coverage_report(wkt_aoi, date_footprints):
+    """逐时相并集覆盖率（纯函数，可离线测试）→ {date: {ratio, covers}}
+
+    给定 {date: [GeoJSON footprint...]} 计算每个时相并集对研究区的覆盖率
+    ratio（0~1）与是否完全覆盖 covers。用于对【裁剪/自定义下载清单】做
+    逐时相覆盖复检——check_per_date_coverage 用的是搜索返回的【全部帧】，
+    裁剪掉冗余帧（如省磁盘只留主覆盖帧）后必须按裁剪后的清单重新校验，
+    否则单帧足迹偏位的时相会漏检（实测 2025-02-06：帧 463 单帧仅覆盖
+    研究区 90.2%，补相邻帧 468 后并集才 100%）。
+    """
+    from shapely.geometry import shape
+    from shapely.ops import unary_union
+    from shapely.wkt import loads
+
+    aoi = loads(wkt_aoi)
+    report = {}
+    for date, geoms in sorted(date_footprints.items()):
+        fps = [shape(g) for g in geoms if g]
+        if not fps:
+            report[date] = {"ratio": 0.0, "covers": False}
+            continue
+        union = unary_union(fps)
+        report[date] = {
+            "ratio": union.intersection(aoi).area / aoi.area,
+            "covers": bool(union.covers(aoi)),
+        }
+    return report
+
+
+def verify_download_list(wkt_aoi, rows, search_fn=None, log=print):
+    """下载清单（csv 行：date/file）逐时相覆盖复检 → (ok_dates, bad_dates)
+
+    每个时相用清单内全部文件（granule_search 取真实 footprint）做并集
+    覆盖检查；并集未完全覆盖或 granule 查询失败即未达标。裁剪/自定义
+    清单在下载前必须跑本复检（配合 multi_download.py --verify-aoi）。
+    search_fn 可注入（单元测试用假函数）；默认 asf_search.granule_search。
+
+    返回:
+        ok_dates:  [(date, ratio), ...]
+        bad_dates: [(date, ratio), ...]
+    """
+    from collections import defaultdict
+
+    if search_fn is None:
+        import asf_search
+
+        search_fn = asf_search.granule_search
+
+    by_date = defaultdict(list)
+    for row in rows:
+        fn = (row.get("file") or "").strip()
+        d = (row.get("date") or "").strip()
+        if fn and d:
+            by_date[d].append(fn)
+
+    ok_dates, bad_dates = [], []
+    for date in sorted(by_date):
+        geoms, missing = [], []
+        for fn in by_date[date]:
+            try:
+                prods = search_fn(fn.replace(".zip", ""))
+            except Exception as e:  # 网络异常按未达标处理并记录
+                missing.append(f"{fn} ({str(e)[:40]})")
+                continue
+            if not prods:
+                missing.append(fn)
+                continue
+            geoms.append(prods[0].geometry)
+        report = per_date_coverage_report(wkt_aoi, {date: geoms})
+        info = report[date]
+        if missing:
+            log(f"  {date}: {len(missing)} 景查询失败（未达标）: {missing[0][:60]}")
+        if info["covers"] and not missing:
+            ok_dates.append((date, info["ratio"]))
+        else:
+            bad_dates.append((date, info["ratio"]))
+    return ok_dates, bad_dates
+
+
 # ==================== 轨道 / 卫星一致性 ====================
 
 
