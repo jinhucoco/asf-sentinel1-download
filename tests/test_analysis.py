@@ -68,6 +68,65 @@ def test_monthly_sample():
     assert '2025-01-05' in str(sel[0].properties['startTime'])
 
 
+def test_per_date_coverage_report_pruned():
+    """裁剪清单复检（纯函数）：2025-02-06 场景——单帧部分覆盖检出，补帧并集通过"""
+    from analysis import per_date_coverage_report
+
+    # 帧 463 足迹偏位：只盖 AOI 东西向的 90%（实测 2025-02-06 仅盖 90.2%）
+    partial = {
+        "type": "Polygon",
+        "coordinates": [[[130.5, 32], [131.4, 32], [131.4, 34], [130.5, 34], [130.5, 32]]],
+    }
+    rep = per_date_coverage_report(AOI, {"2025-02-06": [partial]})
+    assert rep["2025-02-06"]["covers"] is False
+    assert 0.85 < rep["2025-02-06"]["ratio"] < 1.0
+    # 补相邻帧 468 后并集完全覆盖
+    rep2 = per_date_coverage_report(AOI, {"2025-02-06": [partial, LOWER]})
+    assert rep2["2025-02-06"]["covers"] is True
+    assert rep2["2025-02-06"]["ratio"] >= 1.0
+
+
+def test_verify_download_list_pruned():
+    """清单复检（注入假 granule_search）：裁剪清单缺帧时相被抓出"""
+    from analysis import verify_download_list
+
+    partial = {
+        "type": "Polygon",
+        "coordinates": [[[130.5, 32], [131.4, 32], [131.4, 34], [130.5, 34], [130.5, 32]]],
+    }
+
+    class FakeProd:
+        def __init__(self, geojson):
+            self.geometry = geojson
+
+    def fake_search(name):
+        return [FakeProd(partial)]
+
+    # 两个时相都是单帧 90% 覆盖 → 全部未达标
+    rows = [
+        {"date": "2025-02-06", "file": "S1A_20250206_463.zip"},
+        {"date": "2025-03-01", "file": "S1A_20250301_463.zip"},
+    ]
+    ok, bad = verify_download_list(AOI, rows, search_fn=fake_search)
+    assert len(ok) == 0 and len(bad) == 2
+
+    # 2025-02-06 补上 468 帧后并集达标；granule 查询失败视为未达标
+    rows2 = [
+        {"date": "2025-02-06", "file": "S1A_20250206_463.zip"},
+        {"date": "2025-02-06", "file": "S1A_20250206_468.zip"},
+        {"date": "2025-02-20", "file": "S1A_20250220_463.zip"},
+    ]
+
+    def fake_search2(name):
+        if "20250220" in name:
+            return []  # 模拟 granule 查询失败
+        return [FakeProd(partial if "463" in name else LOWER)]
+
+    ok2, bad2 = verify_download_list(AOI, rows2, search_fn=fake_search2)
+    assert len(ok2) == 1 and len(bad2) == 1  # 02-06 达标，02-20 查询失败未达标
+    assert ok2[0][0] == "2025-02-06"
+
+
 def test_plot_coverage_orbit_filter(tmp_path):
     """覆盖图按轨道过滤：同 frame 不同轨道 footprint 区分，不混画"""
     import os

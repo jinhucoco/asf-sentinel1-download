@@ -24,6 +24,7 @@ def get_creds():
         return u, p
 
     cfg_paths = [
+        os.path.expanduser("~/.pi/agent/skills/insar-genie/config.json"),
         os.path.expanduser("~/.pi/agent/skills/asf-sentinel1-download/config.json"),
         os.path.join(os.path.dirname(os.path.abspath(__file__)), "config.json"),
     ]
