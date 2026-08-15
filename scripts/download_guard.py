@@ -89,11 +89,7 @@ def parse_progress(log_path):
 
 def should_restart(alive, bytes_growing, stall_seconds, stall_min):
     """死亡 或 卡死（stall_min 分钟无字节增长）→ True"""
-    if not alive:
-        return True
-    if not bytes_growing and stall_seconds >= stall_min * 60:
-        return True
-    return False
+    return not alive or (not bytes_growing and stall_seconds >= stall_min * 60)
 
 
 def dir_bytes(out):
