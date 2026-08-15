@@ -1,17 +1,31 @@
-# SBAS-InSAR 全链路自动化
+# SBAS-InSAR 全链路自动化（insar-genie）
 
 **一个给 AI 工具（DSH / pi / Codex / Claude Code / Cursor）用的技能 + 实验全链路流水线**：
 在对话里说出需求，AI 自动从 ASF 下载 Sentinel-1 数据、获取配套数据（DEM/GACOS/POEORB）、
-基于ENVI和SARscape完成 SBAS-InSAR 全流程，并有守护进程全程自动监控汇报。
+基于 ENVI 和 SARscape 完成 SBAS-InSAR 全流程，并有守护进程全程自动监控汇报。
 
 > 仓库结构：`SKILL.md`（AI 技能定义）+ `scripts/`（下载/配套工具）+ `experiment/`（SARscape 批处理 + 守护）+ `dsh/`（DSH 社区插件）+ 环境自检 + 验证脚本。
 
 ---
 
-## 🧩 DSH 用户：一键安装为插件（SBAS 全链路）
+## ✨ 核心能力
 
-在 **DeepSeek Harness (DSH)** 工作台中，本仓库直接以 **agent preset 插件** 形式安装：
-安装后新建会话选择「**SBAS 全链路**」模式，AI 即自动携带 insar-genie 技能（下载/配套/实验/监控全部脚本），对话即用。
+| 阶段 | 能力 |
+|---|---|
+| **AI 数据下载** | 对话触发、同轨同向、逐时相全覆盖校验、轨道一致性、多线程分片（8×）、断点续传、多极化 |
+| **AI 配套数据** | POEORB / GACOS（邮件自动收件）/ NASADEM 30m——全部官方源 |
+| **AI-InSAR 处理** | 对话说"开始实验" → AI 识别地形、列参数表逐项确认 → 执行 SARscape 六步 bat（导入→连接图→干涉→反演×2→地理编码）→ 汇报；零硬编码（config.env）|
+| **AI 守护监控** | AI 部署守护、自动体检、微信（Server酱）+ 邮件、崩溃自动重启、磁盘/停滞预警；用户随时问进展 AI 查日志回答 |
+| **AI 可移植** | 对话说"检查环境"→ AI 跑自检并修复；"验证仓库"→ AI 跑全链路验证 |
+
+---
+
+## 📦 安装（按 Agent 选择一种）
+
+### 🧩 DeepSeek Harness (DSH) — 一键安装为插件
+
+本仓库直接以 **agent preset 插件** 形式安装：安装后新建会话选择「**SBAS 全链路**」模式，
+AI 即自动携带 insar-genie 技能（下载/配套/实验/监控全部脚本），对话即用。
 
 ```bash
 # Windows（PowerShell）
@@ -29,49 +43,31 @@ curl -fsSL https://raw.githubusercontent.com/jinhucoco/insar-genie/main/dsh/inst
 > 卸载：删除 `~/.dsh/.agent-presets/insar-genie/` 目录即可。
 > 源码位置：仓库 `dsh/insar-genie/`（agent.cordis.yml + preset.yml + 自带技能），安装脚本 `dsh/install-dsh.ps1` / `dsh/install-dsh.sh`。
 
----
-
-## 🌟 核心能力
-
-| 阶段 | 能力 |
-|---|---|
-| **AI 数据下载** | 对话触发、同轨同向、逐时相全覆盖校验、轨道一致性、多线程分片（8×）、断点续传、多极化 |
-| **AI 配套数据** | POEORB / GACOS（邮件自动收件）/ NASADEM 30m——全部官方源 |
-| **AI-InSAR 处理** | 对话说"开始实验" → AI 识别地形、列参数表逐项确认 → 执行 SARscape 五步 bat（连接图→干涉→反演×2→地理编码）→ 汇报；零硬编码（config.env）|
-| **AI 守护监控** | AI 部署守护、自动体检、微信（Server酱）+ 邮件、崩溃自动重启、磁盘/停滞预警；用户随时问进展 AI 查日志回答 |
-| **AI 可移植** | 对话说"检查环境"→ AI 跑自检并修复；"验证仓库"→ AI 跑全链路验证|
-
----
-
-## 📦 前置条件（Prerequisites）
-
-| 依赖 | 必需？ | 说明 |
-|---|---|---|
-| **Python 3.10+** | ✅ | `pip install -r scripts/requirements.txt` |
-| **ENVI5.6 + SARscape5.7以及以上** | 处理阶段 ✅ | 商业软件，需自己的 license（下载/配套数据不需要）|
-| **NASA Earthdata 账号** | ✅ | 免费注册，AI 对话中说"配置 ASF 账号密码" |
-| **SLC 数据** | ✅ | AI 技能自动从 ASF 下载 |
-| **GACOS/DEM/POEORB** | ✅ | AI 技能自动获取 |
-| **通知凭证** | 可选 | Server酱 SendKey（sct.ftqq.com ）、SMTP 授权码（守护汇报用，可自行设置邮箱）|
-
----
-
-## 🤖 使用（核心方式）
-
-### 安装与快速开始
+### 🤖 pi — npm 技能包
 
 ```bash
-# Pi 用户（自动注册为 pi 技能）
 pi install npm:pi-asf-sentinel1-slc
+```
 
-# 其他 AI 工具（Codex / Claude Code / Cursor / pi）
+安装后新会话自动注册技能（已开会话需 `/reload` 或重开会话）。
+
+### 💻 Codex / Claude Code / Cursor 等 — 自动安装脚本
+
+```bash
 curl -fsSL https://raw.githubusercontent.com/jinhucoco/insar-genie/main/install.sh | bash
 # 脚本自动：检测工具 → 安装到对应技能目录 → 装依赖 → 生成凭证模板
 ```
 
 > 💡 Codex 沙箱用户：默认关闭网络 + HOME 只读，请在**宿主终端**跑安装，或浏览器下载 zip 手动解压。
 
-**安装后 3 步即可开始使用**（全部在 AI 对话中完成）：
+### 📥 离线 / 手动安装
+
+从 GitHub Releases 下载 `insar-genie-<version>.zip`，解压后将目录放到对应 Agent 的技能目录
+（pi 为 `~/.pi/agent/skills/`，DSH 为 `~/.dsh/.agent-presets/`），再按上面方式在对话中开始使用。
+
+---
+
+## 🚀 快速开始（3 步，全部在对话中完成）
 
 ```
 你: 帮我配置环境
@@ -86,24 +82,18 @@ AI：自动搜索/校验/确认/下载（开始使用！）
 
 ---
 
-## 🚀 使用说明
+## 🛠️ 使用说明
 
 > 每个环节都是 **「你说 → AI 自动做」**，无需任何命令行操作。
 
 ### ① 环境自检与验证
-
-**对话方式**（推荐）：
 
 ```
 你: “检查环境” → AI 跑 check_environment.py，有 [FAIL] 按提示修复后重跑
 你: “验证仓库” → AI 跑 verify_clone.py，34 项全过即可使用
 ```
 
----
-
 ### ② 下载 S1 SLC 数据
-
-**对话方式**（推荐）：
 
 ```
 你: “从 ASF 下载哨兵数据，区域 研究区.shp，时间 20200101 至 20251231，VV+VH”
@@ -115,8 +105,6 @@ AI: ① Earthdata 认证 → ② AOI 转 WKT → ③ 逐极化搜索 → ④ (�
 
 ### ③ 获取配套数据
 
-**对话方式**（推荐）：
-
 ```
 你: “下载配套数据”（或分别说“下载 POEORB / GACOS / DEM”）
 AI: 自动按研究区获取——POEORB 精密轨道（免账号）、GACOS 大气延迟（提交→收邮件→下载 ztd）、NASADEM 30m（自动分幅）
@@ -124,20 +112,15 @@ AI: 自动按研究区获取——POEORB 精密轨道（免账号）、GACOS 大
 
 ### ④ AI-InSAR 处理（需 ENVI+SARscape）
 
-**对话方式**（推荐）：
-
 ```
 你: “开始 SBAS 实验” / “开始第 1 步”
 AI: ① 识别研究区地形 → ② 列该步参数表（含原理）→ ③ 你确认/调整 → ④ 执行 bat → ⑤ 汇报
 ```
 
 > 每步执行前 AI 都会先列参数确认（见 SKILL.md「实验参数设置提醒机制」），不盲跑默认值。
-
-> 所有 bat 从 `config.env` 读路径，**零硬编码**；分类存放 `01_connection_graph` / `02_interferogram` / `03_data_prep`。
+> 所有 bat 从 `config.env` 读路径，**零硬编码**；按步骤分类存放 `00_import` ~ `04_geocode`。
 
 ### ⑤ 守护监控
-
-**对话方式**（推荐）：
 
 ```
 你: “开始监控”           → AI 部署守护并启动（整目录复制到 WORK_DIR/ + python -u sbas_guard.py）
@@ -146,6 +129,8 @@ AI: ① 识别研究区地形 → ② 列该步参数表（含原理）→ ③ �
 ```
 
 守护能力：30 分钟自动体检 + 微信（Server酱）/邮件汇报 + 崩溃自动重启 + 磁盘/停滞预警（5 条/天额度内只推关键事件）。
+
+---
 
 ## 📁 文件结构（File Structure）
 
@@ -166,21 +151,28 @@ insar-genie/
 ├── tests/                       # 48 个单元测试（含镜像一致性）
 ├── .github/workflows/test.yml   # CI：pytest + ruff + 语法 + bat 控制字符检查
 ├── pyproject.toml / .pre-commit-config.yaml  # ruff 规范 + 提交前自动检查
+├── dsh/                         # DSH 社区插件（agent preset + 安装脚本）
+│   ├── insar-genie/             #   preset 包（agent.cordis.yml + preset.yml + 自带技能镜像）
+│   ├── install-dsh.ps1 / install-dsh.sh
 ├── experiment/                  # 实验处理（需 ENVI/SARscape）
 │   ├── config.example.env       # 路径配置模板（本机值 config.env 不入库）
 │   ├── config_loader.py         # python 配置读取
 │   ├── check_environment.py     # 环境自检（27 项）
+│   ├── setup_env.py             # 环境配置向导（自动探测路径）
 │   ├── README.md                # 实验区说明
 │   ├── bat/                     # SARscape 批处理（按步骤分类）
+│   │   ├── 00_import/           # SLC 导入（第 0 步，ROI 裁剪/极化可选）
 │   │   ├── 01_connection_graph/ # 连接图（第 1 步）
 │   │   ├── 02_interferogram/    # 干涉图生成（第 2 步）
-│   │   └── 03_data_prep/        # GACOS 导入 / DEM / geoid
+│   │   ├── 03_data_prep/        # GACOS 导入 / DEM / geoid
+│   │   ├── 03_inversion/        # 反演 Step1 + Step2（第 3 步）
+│   │   └── 04_geocode/          # 地理编码（第 5 步）
 │   ├── asf_experiment/          # 守护运行单元（部署整目录到 WORK_DIR/）
 │   │   └── sbas_guard.py        # 守护 v4（Guardian 类：状态机监控/体检/汇报/自动重启）
 │   ├── tools/                   # 实验辅助（连接图绘制等）
 │   └── sar/dem/                 # 研究区 DEM 配置
-├── README.md / install.sh / package.json
-└── docs/
+├── README.md / install.sh / package.json / config.example.json / LICENSE
+└── docs/                        # 文档与示意图
 ```
 
 ---
