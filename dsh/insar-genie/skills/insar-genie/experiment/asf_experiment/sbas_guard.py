@@ -174,8 +174,80 @@ def ensure_rpc():
         return False
 
 
+def discover_dsh():
+    """发现 DSH web：配置 DSH_WEB_URL > 环境变量 > 默认 http://127.0.0.1:3080。"""
+    url = (
+        _CFG.get('DSH_WEB_URL', '').strip()
+        or os.environ.get('DSH_WEB_URL', '').strip()
+        or 'http://127.0.0.1:3080'
+    )
+    return url.rstrip('/')
+
+
+def dsh_rpc(web, method, payload, timeout=15):
+    """DSH RPC 信封：POST /api/<method>（loopback 免鉴权，协议同 WeCom 桥接）。"""
+    import uuid
+
+    body = json.dumps(
+        {
+            'type': 'client-request',
+            'rpcId': str(uuid.uuid4()),
+            'method': method,
+            'payload': payload,
+        },
+        ensure_ascii=False,
+    ).encode('utf-8')
+    req = urllib.request.Request(
+        f'{web}/api/{method}', data=body, headers={'Content-Type': 'application/json'}
+    )
+    resp = json.loads(urllib.request.urlopen(req, timeout=timeout).read().decode('utf-8'))
+    return resp.get('result', {})
+
+
+def wake_dsh(message):
+    """DSH 唤醒：session.list 发现活跃会话 → session.prompt 注入诊断消息。
+
+    用户主力助手为 DSH（3080）时启用；失败静默返回 False 走下一通道。
+    """
+    web = discover_dsh()
+    try:
+        result = dsh_rpc(web, 'session.list', {})
+        if not result.get('ok'):
+            return False
+        items = result.get('value', {}).get('items') or []
+        items.sort(key=lambda it: it.get('updatedAt', 0), reverse=True)
+        sid = ''
+        for it in items:  # 优先 running 的非空白会话
+            if it.get('running') and not it.get('blank'):
+                sid = it.get('sessionId', '')
+                break
+        if not sid:  # 其次最近更新的非空白会话
+            for it in items:
+                if not it.get('blank'):
+                    sid = it.get('sessionId', '')
+                    break
+        if not sid:
+            return False
+        r = dsh_rpc(
+            web,
+            'session.prompt',
+            {
+                'sessionId': sid,
+                'mode': 'queue',
+                'content': [{'type': 'text', 'text': message}],
+            },
+        )
+        return bool(r.get('ok'))
+    except Exception as e:
+        log(f'[DSH唤醒失败] {str(e)[:80]}')
+        return False
+
+
 def wake_ai(message, etype='error', stage=None):
-    """唤醒 AI 推理，三级通道：① pi-web HTTP → ② 通用 pi RPC → ③ wake_events 兜底。"""
+    """唤醒 AI 推理，四级通道：① DSH (3080) → ② pi-web HTTP → ③ 通用 pi RPC → ④ wake_events 兜底。"""
+    if wake_dsh(message):
+        log(f'[唤醒AI-DSH] {message[:50]}')
+        return True
     web = discover_piweb()
     sid = discover_session_id(web) if web else ''
     if web and sid:
