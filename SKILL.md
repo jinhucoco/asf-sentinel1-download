@@ -251,7 +251,19 @@ python scripts/multi_download.py \
   重启后走单连接整文件下载），网络极差时保底不中断
 - 断点续传：已完成文件跳过；失败分片清理后下次重下
 - `bytes=0-0` 探测真实大小（ASF 的 HEAD 不可靠）
-- 挂机建议：配合守护循环（检测进程死/卡死自动重启），日志在 `--out/multi_download.log`
+- 挂机建议：配合 **`download_guard.py` 下载守护**（定时邮件/Server酱进度推送 + 死亡/卡死自动重启 + 完成通知）：
+
+```bash
+# 先跑下载（或直接让守护代启——守护会自动接管已运行的下载进程）
+python scripts/multi_download.py --list 清单.csv --out <下载目录>
+# 再开守护：白天工作时间（默认 09-18 点）每 2 小时一封进度邮件/微信，夜间静默；
+# 事件（启动/完成/重启/卡死）即时推送；卡死自动重启，完成发通知后退出
+python scripts/download_guard.py --list 清单.csv --out <下载目录> \
+  --work-start 9 --work-end 18 --report-every 2 \
+  --mail-config mail_config.json --notify-config notify_config.json
+```
+
+- 下载日志在 `--out/multi_download.log`，守护日志在 `--out/download_guard.log`
 - 适合 SBAS 全量时间序列（几百 GB 量级），耗时由网络决定，勿催
 
 ### ⚠️ 裁剪/自定义清单必须复检（2026-08-15 实测教训）
