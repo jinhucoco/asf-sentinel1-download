@@ -61,12 +61,14 @@ def parse_progress(log_path):
             m = re.search(r"\[(\d+)/(\d+)\]", line)
             if m:
                 total = int(m.group(2))
-            if "[OK]" in line:
-                ok += 1
-            elif "[FAIL]" in line:
-                fail += 1
-            elif "跳过(已完成)" in line:
-                skip += 1
+                # 只统计带 [n/total] 前缀的行，避免把每次启动写的
+                # "[OK] 认证成功" 等无前缀行计入 ok
+                if "[OK]" in line:
+                    ok += 1
+                elif "[FAIL]" in line:
+                    fail += 1
+                elif "跳过(已完成)" in line:
+                    skip += 1
             if "[DL]" in line:
                 current = line.strip()[-60:]
     return {"ok": ok, "fail": fail, "skip": skip, "current": current, "total": total}

@@ -5,7 +5,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from scripts.download_guard import parse_progress, should_restart  # noqa: E402
+from scripts.download_guard import parse_progress, should_restart
 
 
 def test_parse_progress(tmp_path):
@@ -31,6 +31,23 @@ def test_parse_progress_missing_file(tmp_path):
     """日志不存在 → 全 0"""
     p = parse_progress(str(tmp_path / "nope.log"))
     assert p == {"ok": 0, "fail": 0, "skip": 0, "current": "", "total": 0}
+
+
+def test_parse_progress_ignores_auth_lines(tmp_path):
+    """重启时写的 '[OK] 认证成功' 行（无 [n/total] 前缀）不计入 ok"""
+    log = tmp_path / "multi_download.log"
+    log.write_text(
+        "[08-15 20:43:32] [OK] 认证成功: jinhu | 线程=8\n"
+        "[08-15 20:56:55] [1/85] [OK] S1A_xxx.zip 3.89GB\n"
+        "[08-16 10:06:46] [OK] 认证成功: jinhu | 线程=8\n"
+        "[08-16 10:10:09] [OK] 认证成功: jinhu | 线程=8\n",
+        encoding="utf-8",
+    )
+    p = parse_progress(str(log))
+    assert p["total"] == 85
+    assert p["ok"] == 1
+    assert p["fail"] == 0
+    assert p["skip"] == 0
 
 
 def test_should_restart():
