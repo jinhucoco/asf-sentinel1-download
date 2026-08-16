@@ -248,7 +248,10 @@ python scripts/multi_download.py \
 
 - 8 线程 Range 分片并发（<300MB 自动用 4 片），分片级重试（每片 4 次 + backoff）
 - **自动降级**：多线程连续 2 个文件作废时自动切换单文件模式（写 `<out>/mode.flag`，
-  重启后走单连接整文件下载），网络极差时保底不中断
+  重启后走单连接整文件下载），网络极差时保底不中断。
+  ⚠ 8-16 修复：网络断连（ConnectionReset）与下载失败（[FAIL]）**两条路径都累计**
+  连续失败数（`maybe_downgrade` 纯函数）——旧版 except 分支不累计，网络越差
+  越不降级，导致 8-16 民勤连续 3 文件被 ASF 硬限流踢掉仍不降级
 - 断点续传：已完成文件跳过；失败分片清理后下次重下
 - `bytes=0-0` 探测真实大小（ASF 的 HEAD 不可靠）
 - 挂机建议：配合 **`download_guard.py` 下载守护**（每 30 分钟体检 + 邮件/Server酱报告 + 异常自动介入重启 + 完成通知）：
@@ -262,6 +265,12 @@ python scripts/download_guard.py --list 清单.csv --out <下载目录> \
   --health-interval 30 \
   --mail-config mail_config.json --notify-config notify_config.json
 ```
+
+- **守护与下载平级**：守护每次检测前用 `detect_running` 重新找在跑下载器（含
+  run_dl/计划任务/手动拉起的），只认自己 spawn 的 pid 会误判死亡反复重启
+  → 双下载器抢同一文件（8-16 事故）；`run_dl.py` 已加命名互斥锁防并发拉起
+- **Windows 进程检测用 PowerShell**（`Get-CimInstance Win32_Process`），wmic 输出
+  列序不稳/偶发查不到进程，不可靠（8-16 实测）
 
 - 下载日志在 `--out/multi_download.log`，守护日志在 `--out/download_guard.log`
 - 适合 SBAS 全量时间序列（几百 GB 量级），耗时由网络决定，勿催
