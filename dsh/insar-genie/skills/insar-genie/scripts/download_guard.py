@@ -155,7 +155,7 @@ def detect_running(out):
         ps = (
             "Get-CimInstance Win32_Process -Filter \"Name like '%python%'\" "
             "| Where-Object { $_.CommandLine -match 'multi_download' } "
-            "| ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }"
+            '| ForEach-Object { "$($_.ProcessId)|$($_.CommandLine)" }'
         )
         r = subprocess.run(
             ["powershell", "-NoProfile", "-Command", ps],
