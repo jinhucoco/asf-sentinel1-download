@@ -244,6 +244,24 @@ def read_mode(out_dir):
     return "multi"
 
 
+def maybe_downgrade(mode, fail_streak, args, logfile):
+    """多线程连续 2 个文件作废 → 写 mode.flag 切单文件模式，返回是否已降级退出。
+
+    2026-08-16 教训：原逻辑只在下载函数返回失败（[FAIL]）时累计 fail_streak，
+    而网络断连（ConnectionReset 等）走 except 分支（[WARN]）不累计——
+    网络越差越走 except，降级反而永远触发不了。故抽成纯函数，两条路径共用。
+    """
+    if mode == "multi" and fail_streak >= 2:
+        with open(os.path.join(args.out, "mode.flag"), "w", encoding="utf-8") as f:
+            f.write("single")
+        log(
+            f"[DOWNGRADE] 多线程连续 {fail_streak} 文件作废，自动切换单文件模式，退出重启",
+            logfile,
+        )
+        return True
+    return False
+
+
 def main():
     ap = argparse.ArgumentParser(description="ASF 多线程分片下载")
     ap.add_argument("--list", help="清单 CSV（date,frame,orbit,satellite,file 列），优先于搜索路径")
@@ -403,18 +421,17 @@ def main():
                 fail_streak += 1
                 log(f"[{i}/{len(rows)}] [FAIL] {fname[:45]}", logfile)
                 # 自动降级：多线程连续 2 个文件作废 → 切单文件模式（网络极差的保底）
-                if mode == "multi" and fail_streak >= 2:
-                    with open(os.path.join(args.out, "mode.flag"), "w", encoding="utf-8") as f:
-                        f.write("single")
-                    log(
-                        f"[DOWNGRADE] 多线程连续 {fail_streak} 文件作废，自动切换单文件模式，退出重启",
-                        logfile,
-                    )
+                if maybe_downgrade(mode, fail_streak, args, logfile):
                     completed = False
                     break
         except Exception as e:
             fail += 1
+            fail_streak += 1
             log(f"[{i}/{len(rows)}] [WARN] {fname[:45]} :: {str(e)[:80]}", logfile)
+            # 网络断连（ConnectionReset 等）同样累计连续失败，触发自动降级
+            if maybe_downgrade(mode, fail_streak, args, logfile):
+                completed = False
+                break
 
         time.sleep(2)
 
