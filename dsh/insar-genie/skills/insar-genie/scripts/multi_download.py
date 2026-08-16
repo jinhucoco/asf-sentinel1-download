@@ -40,6 +40,45 @@ def log(msg, logfile):
             f.write(line + "\n")
 
 
+def _refresh_proxy(session, logfile):
+    """每个文件下载前调用：动态读 Windows 系统代理，开关代理即时生效。
+
+    2026-08-16 改进：原实现只在启动时读环境变量（进程生命周期内固化），
+    用户开/关代理后必须重启下载器才生效。改为每次下载前读注册表
+    ProxyEnable/ProxyServer——开代理自动走代理，关代理自动直连，
+    全程无需重启。环境变量（HTTPS_PROXY）优先级更高，兼容外部注入。
+    """
+    proxy = (
+        os.environ.get("HTTPS_PROXY")
+        or os.environ.get("https_proxy")
+        or os.environ.get("HTTP_PROXY")
+        or os.environ.get("http_proxy")
+        or os.environ.get("ALL_PROXY")
+    )
+    if not proxy and os.name == "nt":
+        try:
+            import winreg
+            with winreg.OpenKey(
+                winreg.HKEY_CURRENT_USER,
+                r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
+            ) as key:
+                enable, _ = winreg.QueryValueEx(key, "ProxyEnable")
+                server, _ = winreg.QueryValueEx(key, "ProxyServer")
+            if enable and server:
+                proxy = server if "://" in server else "http://" + server
+        except OSError:
+            pass
+    # 仅在状态变化时更新并记日志（避免每个文件刷屏）
+    current = dict(session.proxies or {}).get("https") or dict(session.proxies or {}).get("http")
+    if (proxy or None) != (current or None):
+        if proxy:
+            session.proxies = {"http": proxy, "https": proxy}
+            log(f"[PROXY] 使用代理: {proxy}", logfile)
+        else:
+            session.proxies = {}
+            log("[PROXY] 未使用代理（直连）", logfile)
+
+
 def download_chunk(session, url, start, end, part_path, idx, logfile):
     """下载一个分片；已下载部分跳过，失败重试"""
     existing = os.path.getsize(part_path) if os.path.exists(part_path) else 0
@@ -347,9 +386,9 @@ def main():
 
     session = ASFSession()
     session.auth_with_creds(cfg["username"], cfg["password"])
-    # 代理支持：读环境变量 HTTPS_PROXY/HTTP_PROXY（或 ALL_PROXY），
-    # 用户开代理客户端（Clash 等）后自动生效，不开则直连。
-    # 2026-08-16：曾因不走代理导致直连 ASF 反复 ConnectionReset。
+    os.makedirs(args.out, exist_ok=True)
+    logfile = os.path.join(args.out, "multi_download.log")
+    # 代理：启动时应用一次（环境变量优先），此后每个文件前动态刷新（见 _refresh_proxy）
     proxy_url = (
         os.environ.get("HTTPS_PROXY")
         or os.environ.get("https_proxy")
@@ -360,8 +399,6 @@ def main():
     if proxy_url:
         session.proxies = {"http": proxy_url, "https": proxy_url}
         log(f"[PROXY] 使用代理: {proxy_url}", logfile)
-    os.makedirs(args.out, exist_ok=True)
-    logfile = os.path.join(args.out, "multi_download.log")
     log(f"[OK] 认证成功: {cfg['username']} | 线程={args.threads}", logfile)
 
     rows = []
@@ -456,6 +493,8 @@ def main():
 
             continue
         try:
+            # 每个文件前动态刷新代理（用户开/关代理即时生效，无需重启）
+            _refresh_proxy(session, logfile)
             prod = asf.granule_search(fname.replace(".zip", ""))
             if not prod:
                 log(f"[{i}/{len(rows)}] [FAIL] 未找到: {fname[:45]}", logfile)
