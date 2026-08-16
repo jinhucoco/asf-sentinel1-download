@@ -144,31 +144,32 @@ def _no_window_flags():
 
 
 def detect_running(out):
-    """找正在跑的 multi_download 进程（命令行含 --out <out>）→ pid 或 None"""
+    """找正在跑的 multi_download 进程（命令行含 --out <out>）→ pid 或 None
+
+    2026-08-16 改用 PowerShell：wmic 输出列顺序不稳、行尾正则取 pid 不可靠，
+    曾导致守护误判下载器死亡而反复 RESTART（与 run_dl/计划任务/手动拉起者
+    互不知晓，双下载器抢同一文件）。
+    """
     norm = os.path.normcase(os.path.abspath(out))
     try:
+        ps = (
+            "Get-CimInstance Win32_Process -Filter \"Name like '%python%'\" "
+            "| Where-Object { $_.CommandLine -match 'multi_download' } "
+            "| ForEach-Object { \"$($_.ProcessId)|$($_.CommandLine)\" }"
+        )
         r = subprocess.run(
-            [
-                "wmic",
-                "process",
-                "where",
-                "name like '%python%'",
-                "get",
-                "processid,commandline",
-                "/format:csv",
-            ],
+            ["powershell", "-NoProfile", "-Command", ps],
             capture_output=True,
             text=True,
             timeout=30,
             creationflags=_no_window_flags(),
         )
         for line in r.stdout.splitlines():
-            if "multi_download" not in line:
+            pid_s, sep, cmd = line.partition("|")
+            if not sep:
                 continue
-            if norm in os.path.normcase(line):
-                m = re.search(r"(\d+)\s*$", line.strip())
-                if m:
-                    return int(m.group(1))
+            if norm in os.path.normcase(cmd):
+                return int(pid_s)
     except Exception:
         pass
     return None
@@ -379,6 +380,9 @@ def main():
                 return
 
             # 存活 / 卡死检查（每分钟；发现问题立即介入处理）
+            # 每次检测前刷新 pid：下载器可能由 run_dl/计划任务/手动拉起，守护与
+            # 下载是平级进程，不能只认自己 spawn 的 pid（2026-08-16 双下载器教训）
+            pid = detect_running(out) or pid
             alive = bool(pid) and is_alive(pid) if pid else False
             total = dir_bytes(out)
             growing = total > last_bytes
