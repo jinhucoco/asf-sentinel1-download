@@ -251,20 +251,39 @@ python scripts/multi_download.py \
   重启后走单连接整文件下载），网络极差时保底不中断
 - 断点续传：已完成文件跳过；失败分片清理后下次重下
 - `bytes=0-0` 探测真实大小（ASF 的 HEAD 不可靠）
-- 挂机建议：配合 **`download_guard.py` 下载守护**（定时邮件/Server酱进度推送 + 死亡/卡死自动重启 + 完成通知）：
+- 挂机建议：配合 **`download_guard.py` 下载守护**（每 30 分钟体检 + 邮件/Server酱报告 + 异常自动介入重启 + 完成通知）：
 
 ```bash
 # 先跑下载（或直接让守护代启——守护会自动接管已运行的下载进程）
 python scripts/multi_download.py --list 清单.csv --out <下载目录>
-# 再开守护：白天工作时间（默认 09-18 点）每 2 小时一封进度邮件/微信，夜间静默；
-# 事件（启动/完成/重启/卡死）即时推送；卡死自动重启，完成发通知后退出
+# 再开守护：每 30 分钟一封体检报告邮件（含进度/速度/状态/重启次数/日志尾部）；
+# 异常（死亡/卡死）自动重启并即时通知；完成发通知后退出
 python scripts/download_guard.py --list 清单.csv --out <下载目录> \
-  --work-start 9 --work-end 18 --report-every 2 \
+  --health-interval 30 \
   --mail-config mail_config.json --notify-config notify_config.json
 ```
 
 - 下载日志在 `--out/multi_download.log`，守护日志在 `--out/download_guard.log`
 - 适合 SBAS 全量时间序列（几百 GB 量级），耗时由网络决定，勿催
+
+### ⚠️ 长下载必须系统级托管（2026-08-16 实测教训）
+
+**web 宿主重启会杀掉其后台 job**（下载进程、守护、桥接一起死，且守护的自动重启
+也没机会跑）。守护必须**脱离 web 宿主独立运行**——推荐部署方式：
+
+```bat
+:: 方案：Task Scheduler 计划任务（svchost 拉起，跨工具调用/重启存活）+ 开机自启
+:: 1) 写启动脚本 start_dl_guard.bat（内容 = 上面的 download_guard.py 命令，ASCII 注释）
+:: 2) 计划任务（定时触发，勿用 schtasks /run 直接启动——工具调用衍生的进程树会被回收）
+schtasks /create /tn insar-genie-dl-guard /tr "cmd /c D:\path\start_dl_guard.bat" /sc once /st HH:MM /f
+:: 3) 开机自启（注册表，登录自动拉起）
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InSarGenieDLGuard /t REG_SZ /d "wscript.exe \"D:\path\start_dl_guard.vbs\"" /f
+```
+
+- **不要**：把下载/守护作为 DSH/pi 会话的后台任务跑（宿主重启即死，可能一夜零进展）；
+- **不要**：同时跑两个下载器（守护 spawn 的 + 手动启动的会写同一批 .part 文件）；
+- **bug 修复必须同步全部副本**（repo + skills/ 镜像 + dsh/ 预设 + 本机安装副本），
+  只改一处会被后续同步覆盖回去（2026-08-16 mode.flag 复发案例，v1.5.1 已修复）。
 
 ### ⚠️ 裁剪/自定义清单必须复检（2026-08-15 实测教训）
 

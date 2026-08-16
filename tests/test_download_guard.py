@@ -41,23 +41,30 @@ def test_should_restart():
     assert not should_restart(alive=True, bytes_growing=False, stall_seconds=10 * 60, stall_min=40)
 
 
-def test_next_report_time():
-    """工作时段整点网格：9/11/13/15/17 推送；18 点后夜间静默"""
-    from datetime import datetime
+def test_health_body(tmp_path):
+    """体检报告包含进度/状态/速度/重启数/日志尾部"""
+    from scripts.download_guard import health_body
 
-    from scripts.download_guard import next_report_time
+    log = tmp_path / "multi_download.log"
+    log.write_text("[1/85] [OK] xxx\n[2/85] [DL] yyy\n", encoding="utf-8")
+    prog = {"ok": 1, "fail": 0, "skip": 0, "current": "yyy", "total": 85}
+    body = health_body(
+        str(log), prog, str(tmp_path), alive=True, restarts=2, note="", speed_mbps=7.5
+    )
+    assert "1/85" in body
+    assert "✅ 正常" in body
+    assert "7.5 MB/s" in body
+    assert "重启次数: 2" in body
+    assert "yyy" in body
 
-    # 08:00 → 下一个 09:00
-    t = next_report_time(9, 18, 2, datetime(2026, 8, 15, 8, 0))
-    assert t.hour == 9
-    # 10:30 → 下一个 11:00
-    t = next_report_time(9, 18, 2, datetime(2026, 8, 15, 10, 30))
-    assert t.hour == 11
-    # 恰好整点 09:00 → 下一个 11:00（当前 >= 网格点才推送）
-    t = next_report_time(9, 18, 2, datetime(2026, 8, 15, 9, 0))
-    assert t.hour == 11
-    # 17:30 已过全部网格点 → None（今天不再推）
-    assert next_report_time(9, 18, 2, datetime(2026, 8, 15, 17, 30)) is None
-    # 19:00 / 20:00（工作时段外启动）→ None，夜间静默
-    assert next_report_time(9, 18, 2, datetime(2026, 8, 15, 19, 0)) is None
-    assert next_report_time(9, 18, 2, datetime(2026, 8, 15, 20, 0)) is None
+    body2 = health_body(
+        str(log),
+        prog,
+        str(tmp_path),
+        alive=False,
+        restarts=2,
+        note="⚠ 已介入处理: 进程死亡",
+        speed_mbps=None,
+    )
+    assert "❌ 进程不在" in body2
+    assert "⚠ 已介入处理" in body2
