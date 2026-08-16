@@ -226,6 +226,24 @@ def search_and_group(aoi, start, end, pols):
     return groups, results
 
 
+def read_mode(out_dir):
+    """读取下载模式（multi=多线程分片 / single=单文件）。
+
+    mode.flag 由守护/降级逻辑写入；不存在时默认 multi。
+    首次运行必须不崩溃（2026-08-15 教训：曾因先 open 后判存在导致
+    首跑 FileNotFoundError；修复后曾因镜像同步回旧版复发——故抽成纯函数+测试）。
+    """
+    mode_flag = os.path.join(out_dir, "mode.flag")
+    if os.path.exists(mode_flag):
+        try:
+            with open(mode_flag, encoding="utf-8") as f:
+                if f.read().strip() == "single":
+                    return "single"
+        except OSError:
+            pass
+    return "multi"
+
+
 def main():
     ap = argparse.ArgumentParser(description="ASF 多线程分片下载")
     ap.add_argument("--list", help="清单 CSV（date,frame,orbit,satellite,file 列），优先于搜索路径")
@@ -329,12 +347,7 @@ def main():
         except OSError:
             pass
     # 下载模式：multi=多线程分片，single=单文件（自动降级后，标记存输出目录）
-    with open(os.path.join(args.out, "mode.flag")) as f:
-        mode = (
-            "single"
-            if os.path.exists(os.path.join(args.out, "mode.flag")) and f.read().strip() == "single"
-            else "multi"
-        )
+    mode = read_mode(args.out)
     log(f"[MODE] 下载模式: {mode}{'（已自动降级）' if mode == 'single' else ''}", logfile)
     for i, r in enumerate(rows, 1):
         fname = r.get("file", "").strip()
