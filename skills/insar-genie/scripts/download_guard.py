@@ -245,14 +245,20 @@ def log_err(msg):
 
 
 def spawn_downloader(cmd):
-    """隐形启动下载器：CREATE_NO_WINDOW（无控制台窗口）+ 输出重定向到 NUL。
+    """独立启动下载器：CREATE_NO_WINDOW（无窗口）+ DETACHED_PROCESS（脱离守护，
+    与守护平级独立）+ 输出重定向 NUL。
 
-    2026-08-16 用户要求：后台必须纯 python 无感（前台无任何 cmd/python 窗口），
-    同 pi 的独立后台体验。守护自身由 pythonw 启动（无控制台）。
+    2026-08-16 用户要求：守护与下载是【两个独立进程】，守护不"拥有"下载器——
+    守护死亡不影响下载，下载死亡由守护监控重启。本函数用于守护发现下载器死亡后
+    的重启（初始启动由 run_dl.py 启动器平级拉起，两边互不为父子）。
     """
+    flags = 0
+    if os.name == "nt":
+        flags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        flags |= getattr(subprocess, "CREATE_DETACHED_PROCESS", 0)
     return subprocess.Popen(
         cmd,
-        creationflags=_no_window_flags(),
+        creationflags=flags,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )

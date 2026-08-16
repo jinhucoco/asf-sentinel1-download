@@ -271,15 +271,18 @@ python scripts/download_guard.py --list 清单.csv --out <下载目录> \
 **web 宿主重启会杀掉其后台 job**（下载进程、守护、桥接一起死，且守护的自动重启
 也没机会跑）。守护必须**脱离 web 宿主独立运行**，且**纯 python 无感后台**
 （前台无任何 cmd/python 窗口——2026-08-16 用户要求，同 pi 独立后台体验）：
-- 守护用 **pythonw.exe**（无控制台）启动；
-- 下载器由守护用 **CREATE_NO_WINDOW + stdout/stderr→DEVNULL** 隐形 spawn（python.exe 即可）；
-- 不用 cmd/bat/vbs 任何壳。
+- **守护与下载是两个平级独立进程**：由 `run_dl.py` 启动器分别拉起（各带
+  CREATE_NO_WINDOW + DETACHED_PROCESS），互不为父子；守护只【监控】下载器，
+  下载器不依赖守护存活（守护死亡下载照跑）；
+- 守护用 **pythonw.exe**（无控制台）；下载器用 **python.exe + 隐形启动**；
+- 守护重启下载器时也用 DETACHED_PROCESS（重启的下载器同样脱离守护）；
+- 不用 cmd/bat/vbs 任何壳（tasklist/wmic/taskkill 等控制台调用全部带
+  CREATE_NO_WINDOW，无闪窗）。
 
 ```powershell
-# 1) 写 launcher.py（硬编码下载参数，import download_guard.main 并设 sys.argv）
-#    例：D:\path\run_dl_guard.py
-# 2) 计划任务【每 5 分钟循环】直接跑 pythonw（幂等：launcher 里先查守护是否在跑）
-$action = New-ScheduledTaskAction -Execute "C:\Python314\pythonw.exe" -Argument '"D:\path\run_dl_guard.py"'
+# 1) 写 run_dl.py 启动器：确保下载器没跑就拉起、守护没跑就拉起（各自 DETACHED）
+# 2) 计划任务【每 5 分钟循环】直接跑 pythonw run_dl.py
+$action = New-ScheduledTaskAction -Execute "C:\Python314\pythonw.exe" -Argument '"D:\path\run_dl.py"'
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
 Register-ScheduledTask -TaskName "insar-genie-dl-guard" -Action $action -Trigger $trigger -Force
 # 3) 开机自启（pythonw 直启，无需 vbs）
