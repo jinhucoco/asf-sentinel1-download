@@ -134,6 +134,13 @@ def notify_all(mail, notify, title, body):
 # ==================== 进程检测 / 重启 ====================
 
 
+def _no_window_flags():
+    """Windows 下隐藏控制台窗口的标志（tasklist/wmic/taskkill 闪窗修复）"""
+    if os.name == "nt":
+        return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    return 0
+
+
 def detect_running(out):
     """找正在跑的 multi_download 进程（命令行含 --out <out>）→ pid 或 None"""
     norm = os.path.normcase(os.path.abspath(out))
@@ -151,6 +158,7 @@ def detect_running(out):
             capture_output=True,
             text=True,
             timeout=30,
+            creationflags=_no_window_flags(),
         )
         for line in r.stdout.splitlines():
             if "multi_download" not in line:
@@ -172,6 +180,7 @@ def is_alive(pid):
             capture_output=True,
             text=True,
             timeout=20,
+            creationflags=_no_window_flags(),
         )
         return str(pid) in r.stdout
     except Exception:
@@ -180,15 +189,26 @@ def is_alive(pid):
 
 def kill_pid(pid):
     try:
-        subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=20)
+        subprocess.run(
+            ["taskkill", "/F", "/PID", str(pid)],
+            capture_output=True,
+            timeout=20,
+            creationflags=_no_window_flags(),
+        )
     except Exception:
         pass
 
 
 def build_download_cmd(args):
-    """由守护参数重建 multi_download 命令（重启/启动用）"""
+    """由守护参数重建 multi_download 命令（重启/启动用）。
+
+    用 python.exe（非 pythonw，确保 print 正常）+ 隐形启动标志。
+    """
+    py = sys.executable
+    if py.lower().endswith("pythonw.exe"):
+        py = py[: -len("pythonw.exe")] + "python.exe"
     cmd = [
-        sys.executable,
+        py,
         os.path.join(SKILL_SCRIPTS, "multi_download.py"),
         "--list",
         args.list,
@@ -204,15 +224,44 @@ def build_download_cmd(args):
     return cmd
 
 
+def safe_print(line):
+    """无控制台环境（pythonw/DEVNULL）下打印不崩溃"""
+    try:
+        if sys.stdout is not None:
+            print(line, flush=True)
+    except Exception:
+        pass
+
+
 def log(glog, msg):
     line = f"[{datetime.now().strftime('%m-%d %H:%M:%S')}] {msg}"
-    print(line, flush=True)
+    safe_print(line)
     with open(glog, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
 
 def log_err(msg):
-    print(f"[ERR] {msg}", flush=True)
+    safe_print(f"[ERR] {msg}")
+
+
+def spawn_downloader(cmd):
+    """独立启动下载器：CREATE_NO_WINDOW（无窗口）+ DETACHED_PROCESS（脱离守护，
+    与守护平级独立）+ 输出重定向 NUL。
+
+    2026-08-16 用户要求：守护与下载是【两个独立进程】，守护不"拥有"下载器——
+    守护死亡不影响下载，下载死亡由守护监控重启。本函数用于守护发现下载器死亡后
+    的重启（初始启动由 run_dl.py 启动器平级拉起，两边互不为父子）。
+    """
+    flags = 0
+    if os.name == "nt":
+        flags |= getattr(subprocess, "CREATE_NO_WINDOW", 0)
+        flags |= getattr(subprocess, "CREATE_DETACHED_PROCESS", 0)
+    return subprocess.Popen(
+        cmd,
+        creationflags=flags,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def load_json(path):
@@ -289,7 +338,7 @@ def main():
             log(glog, "[!] 未检测到下载进程且 --no-restart，守护仅监控/推送")
         else:
             cmd = build_download_cmd(args)
-            proc = subprocess.Popen(cmd)
+            proc = spawn_downloader(cmd)
             pid = proc.pid
             with open(pidfile, "w") as f:
                 f.write(str(pid))
@@ -315,66 +364,79 @@ def main():
 
     while True:
         time.sleep(60)
-        now = datetime.now()
+        try:
+            now = datetime.now()
 
-        # 完成检测
-        if os.path.exists(complete):
-            prog = parse_progress(logfile)
-            body = health_body(logfile, prog, out, restarts=restart_count)
-            title = f"下载完成 {prog['ok']}/{prog['total']}"
-            notify_all(mail, notify, title, body)
-            log(glog, f"[DONE] complete.flag 出现，发送完成通知（重启 {restart_count} 次）")
-            return
+            # 完成检测
+            if os.path.exists(complete):
+                prog = parse_progress(logfile)
+                body = health_body(logfile, prog, out, restarts=restart_count)
+                title = f"下载完成 {prog['ok']}/{prog['total']}"
+                notify_all(mail, notify, title, body)
+                log(glog, f"[DONE] complete.flag 出现，发送完成通知（重启 {restart_count} 次）")
+                return
 
-        # 存活 / 卡死检查（每分钟；发现问题立即介入处理）
-        alive = bool(pid) and is_alive(pid) if pid else False
-        total = dir_bytes(out)
-        growing = total > last_bytes
-        stall_sec = time.time() - last_byte_time
-        note = ""
-        if should_restart(alive, growing, stall_sec, args.stall_min):
-            if args.no_restart:
-                note = f"⚠ 检测到{'进程死亡' if not alive else '卡死'}（--no-restart 未重启）"
-                log(glog, f"[WARN] {note}")
-            else:
-                reason = "进程死亡" if not alive else f"卡死（{int(stall_sec // 60)} 分钟无增长）"
-                log(glog, f"[RESTART] {reason}，重启下载")
-                if pid:
-                    kill_pid(pid)
-                time.sleep(5)
-                cmd = build_download_cmd(args)
-                proc = subprocess.Popen(cmd)
-                pid = proc.pid
-                with open(pidfile, "w") as f:
-                    f.write(str(pid))
-                restart_count += 1
-                last_bytes = dir_bytes(out)
+            # 存活 / 卡死检查（每分钟；发现问题立即介入处理）
+            alive = bool(pid) and is_alive(pid) if pid else False
+            total = dir_bytes(out)
+            growing = total > last_bytes
+            stall_sec = time.time() - last_byte_time
+            note = ""
+            if should_restart(alive, growing, stall_sec, args.stall_min):
+                if args.no_restart:
+                    note = f"⚠ 检测到{'进程死亡' if not alive else '卡死'}（--no-restart 未重启）"
+                    log(glog, f"[WARN] {note}")
+                else:
+                    reason = (
+                        "进程死亡" if not alive else f"卡死（{int(stall_sec // 60)} 分钟无增长）"
+                    )
+                    log(glog, f"[RESTART] {reason}，重启下载")
+                    if pid:
+                        kill_pid(pid)
+                    time.sleep(5)
+                    cmd = build_download_cmd(args)
+                    proc = spawn_downloader(cmd)
+                    pid = proc.pid
+                    with open(pidfile, "w") as f:
+                        f.write(str(pid))
+                    restart_count += 1
+                    last_bytes = dir_bytes(out)
+                    last_byte_time = time.time()
+                    notify_all(mail, notify, f"下载已重启（第 {restart_count} 次）", reason)
+                    note = f"⚠ 已介入处理: {reason}"
+            if growing:
+                last_bytes = total
                 last_byte_time = time.time()
-                notify_all(mail, notify, f"下载已重启（第 {restart_count} 次）", reason)
-                note = f"⚠ 已介入处理: {reason}"
-        if growing:
-            last_bytes = total
-            last_byte_time = time.time()
 
-        # 30 分钟体检报告（健康也发；异常标注处理结果）
-        if time.time() - last_health >= args.health_interval * 60:
-            prog = parse_progress(logfile)
-            speed = (total - last_health_bytes) / max(time.time() - last_health_time, 1) / 1e6
-            body = health_body(
-                logfile,
-                prog,
-                out,
-                alive=alive,
-                restarts=restart_count,
-                note=note,
-                speed_mbps=speed,
-            )
-            title = f"下载体检 {prog['ok']}/{prog['total']}（{now.strftime('%m-%d %H:%M')}）"
-            notify_all(mail, notify, title, body)
-            log(glog, f"[HEALTH] 体检报告已发送: {prog['ok']}/{prog['total']} | {note or '正常'}")
-            last_health = time.time()
-            last_health_bytes = total
-            last_health_time = time.time()
+            # 30 分钟体检报告（健康也发；异常标注处理结果）
+            if time.time() - last_health >= args.health_interval * 60:
+                prog = parse_progress(logfile)
+                speed = (total - last_health_bytes) / max(time.time() - last_health_time, 1) / 1e6
+                body = health_body(
+                    logfile,
+                    prog,
+                    out,
+                    alive=alive,
+                    restarts=restart_count,
+                    note=note,
+                    speed_mbps=speed,
+                )
+                title = f"下载体检 {prog['ok']}/{prog['total']}（{now.strftime('%m-%d %H:%M')}）"
+                notify_all(mail, notify, title, body)
+                log(
+                    glog,
+                    f"[HEALTH] 体检报告已发送: {prog['ok']}/{prog['total']} | {note or '正常'}",
+                )
+                last_health = time.time()
+                last_health_bytes = total
+                last_health_time = time.time()
+        except SystemExit:
+            raise
+        except Exception as e:
+            # 意外异常绝不退出：记录后继续（2026-08-16 教训：守护曾静默死亡
+            # 且无自愈机制，下载长时间无人管）
+            log(glog, f"[ERR] 体检循环异常（已忽略继续）: {str(e)[:120]}")
+            time.sleep(10)
 
 
 if __name__ == "__main__":

@@ -269,16 +269,30 @@ python scripts/download_guard.py --list 清单.csv --out <下载目录> \
 ### ⚠️ 长下载必须系统级托管（2026-08-16 实测教训）
 
 **web 宿主重启会杀掉其后台 job**（下载进程、守护、桥接一起死，且守护的自动重启
-也没机会跑）。守护必须**脱离 web 宿主独立运行**——推荐部署方式：
+也没机会跑）。守护必须**脱离 web 宿主独立运行**，且**纯 python 无感后台**
+（前台无任何 cmd/python 窗口——2026-08-16 用户要求，同 pi 独立后台体验）：
+- **守护与下载是两个平级独立进程**：由 `run_dl.py` 启动器分别拉起（各带
+  CREATE_NO_WINDOW + DETACHED_PROCESS），互不为父子；守护只【监控】下载器，
+  下载器不依赖守护存活（守护死亡下载照跑）；
+- 守护用 **pythonw.exe**（无控制台）；下载器用 **python.exe + 隐形启动**；
+- 守护重启下载器时也用 DETACHED_PROCESS（重启的下载器同样脱离守护）；
+- 不用 cmd/bat/vbs 任何壳（tasklist/wmic/taskkill 等控制台调用全部带
+  CREATE_NO_WINDOW，无闪窗）。
 
-```bat
-:: 方案：Task Scheduler 计划任务（svchost 拉起，跨工具调用/重启存活）+ 开机自启
-:: 1) 写启动脚本 start_dl_guard.bat（内容 = 上面的 download_guard.py 命令，ASCII 注释）
-:: 2) 计划任务（定时触发，勿用 schtasks /run 直接启动——工具调用衍生的进程树会被回收）
-schtasks /create /tn insar-genie-dl-guard /tr "cmd /c D:\path\start_dl_guard.bat" /sc once /st HH:MM /f
-:: 3) 开机自启（注册表，登录自动拉起）
-reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InSarGenieDLGuard /t REG_SZ /d "wscript.exe \"D:\path\start_dl_guard.vbs\"" /f
+```powershell
+# 1) 写 run_dl.py 启动器：确保下载器没跑就拉起、守护没跑就拉起（各自 DETACHED）
+# 2) 计划任务【每 5 分钟循环】直接跑 pythonw run_dl.py
+$action = New-ScheduledTaskAction -Execute "C:\Python314\pythonw.exe" -Argument '"D:\path\run_dl.py"'
+$trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(1) -RepetitionInterval (New-TimeSpan -Minutes 5) -RepetitionDuration (New-TimeSpan -Days 3650)
+Register-ScheduledTask -TaskName "insar-genie-dl-guard" -Action $action -Trigger $trigger -Force
+# 3) 开机自启（pythonw 直启，无需 vbs）
+reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InSarGenieDLGuard /t REG_SZ /d "\"C:\Python314\pythonw.exe\" \"D:\path\run_dl_guard.py\"" /f
 ```
+
+- **守护本身有异常韧性**：体检循环整体 try/except，任何意外异常记录后继续（不会静默死亡）；
+  配合每 5 分钟循环计划任务 = 守护死了自动拉起、下载器死了守护自动重启，**全链路自愈**。
+- **无控制台适配**：download_guard.py 的打印用 `safe_print()`（pythonw 下 sys.stdout 为 None 不崩溃）；
+  `build_download_cmd()` 会把 pythonw 换成 python.exe 再隐形 spawn（保证 print 正常）。
 
 - **不要**：把下载/守护作为 DSH/pi 会话的后台任务跑（宿主重启即死，可能一夜零进展）；
 - **不要**：同时跑两个下载器（守护 spawn 的 + 手动启动的会写同一批 .part 文件）；
