@@ -134,6 +134,13 @@ def notify_all(mail, notify, title, body):
 # ==================== 进程检测 / 重启 ====================
 
 
+def _no_window_flags():
+    """Windows 下隐藏控制台窗口的标志（tasklist/wmic/taskkill 闪窗修复）"""
+    if os.name == "nt":
+        return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    return 0
+
+
 def detect_running(out):
     """找正在跑的 multi_download 进程（命令行含 --out <out>）→ pid 或 None"""
     norm = os.path.normcase(os.path.abspath(out))
@@ -151,6 +158,7 @@ def detect_running(out):
             capture_output=True,
             text=True,
             timeout=30,
+            creationflags=_no_window_flags(),
         )
         for line in r.stdout.splitlines():
             if "multi_download" not in line:
@@ -172,6 +180,7 @@ def is_alive(pid):
             capture_output=True,
             text=True,
             timeout=20,
+            creationflags=_no_window_flags(),
         )
         return str(pid) in r.stdout
     except Exception:
@@ -180,15 +189,26 @@ def is_alive(pid):
 
 def kill_pid(pid):
     try:
-        subprocess.run(["taskkill", "/F", "/PID", str(pid)], capture_output=True, timeout=20)
+        subprocess.run(
+            ["taskkill", "/F", "/PID", str(pid)],
+            capture_output=True,
+            timeout=20,
+            creationflags=_no_window_flags(),
+        )
     except Exception:
         pass
 
 
 def build_download_cmd(args):
-    """由守护参数重建 multi_download 命令（重启/启动用）"""
+    """由守护参数重建 multi_download 命令（重启/启动用）。
+
+    用 python.exe（非 pythonw，确保 print 正常）+ 隐形启动标志。
+    """
+    py = sys.executable
+    if py.lower().endswith("pythonw.exe"):
+        py = py[: -len("pythonw.exe")] + "python.exe"
     cmd = [
-        sys.executable,
+        py,
         os.path.join(SKILL_SCRIPTS, "multi_download.py"),
         "--list",
         args.list,
@@ -204,15 +224,38 @@ def build_download_cmd(args):
     return cmd
 
 
+def safe_print(line):
+    """无控制台环境（pythonw/DEVNULL）下打印不崩溃"""
+    try:
+        if sys.stdout is not None:
+            print(line, flush=True)
+    except Exception:
+        pass
+
+
 def log(glog, msg):
     line = f"[{datetime.now().strftime('%m-%d %H:%M:%S')}] {msg}"
-    print(line, flush=True)
+    safe_print(line)
     with open(glog, "a", encoding="utf-8") as f:
         f.write(line + "\n")
 
 
 def log_err(msg):
-    print(f"[ERR] {msg}", flush=True)
+    safe_print(f"[ERR] {msg}")
+
+
+def spawn_downloader(cmd):
+    """隐形启动下载器：CREATE_NO_WINDOW（无控制台窗口）+ 输出重定向到 NUL。
+
+    2026-08-16 用户要求：后台必须纯 python 无感（前台无任何 cmd/python 窗口），
+    同 pi 的独立后台体验。守护自身由 pythonw 启动（无控制台）。
+    """
+    return subprocess.Popen(
+        cmd,
+        creationflags=_no_window_flags(),
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
 
 
 def load_json(path):
@@ -289,7 +332,7 @@ def main():
             log(glog, "[!] 未检测到下载进程且 --no-restart，守护仅监控/推送")
         else:
             cmd = build_download_cmd(args)
-            proc = subprocess.Popen(cmd)
+            proc = spawn_downloader(cmd)
             pid = proc.pid
             with open(pidfile, "w") as f:
                 f.write(str(pid))
@@ -346,7 +389,7 @@ def main():
                         kill_pid(pid)
                     time.sleep(5)
                     cmd = build_download_cmd(args)
-                    proc = subprocess.Popen(cmd)
+                    proc = spawn_downloader(cmd)
                     pid = proc.pid
                     with open(pidfile, "w") as f:
                         f.write(str(pid))
