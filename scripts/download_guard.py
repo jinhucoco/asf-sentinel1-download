@@ -315,66 +315,79 @@ def main():
 
     while True:
         time.sleep(60)
-        now = datetime.now()
+        try:
+            now = datetime.now()
 
-        # 完成检测
-        if os.path.exists(complete):
-            prog = parse_progress(logfile)
-            body = health_body(logfile, prog, out, restarts=restart_count)
-            title = f"下载完成 {prog['ok']}/{prog['total']}"
-            notify_all(mail, notify, title, body)
-            log(glog, f"[DONE] complete.flag 出现，发送完成通知（重启 {restart_count} 次）")
-            return
+            # 完成检测
+            if os.path.exists(complete):
+                prog = parse_progress(logfile)
+                body = health_body(logfile, prog, out, restarts=restart_count)
+                title = f"下载完成 {prog['ok']}/{prog['total']}"
+                notify_all(mail, notify, title, body)
+                log(glog, f"[DONE] complete.flag 出现，发送完成通知（重启 {restart_count} 次）")
+                return
 
-        # 存活 / 卡死检查（每分钟；发现问题立即介入处理）
-        alive = bool(pid) and is_alive(pid) if pid else False
-        total = dir_bytes(out)
-        growing = total > last_bytes
-        stall_sec = time.time() - last_byte_time
-        note = ""
-        if should_restart(alive, growing, stall_sec, args.stall_min):
-            if args.no_restart:
-                note = f"⚠ 检测到{'进程死亡' if not alive else '卡死'}（--no-restart 未重启）"
-                log(glog, f"[WARN] {note}")
-            else:
-                reason = "进程死亡" if not alive else f"卡死（{int(stall_sec // 60)} 分钟无增长）"
-                log(glog, f"[RESTART] {reason}，重启下载")
-                if pid:
-                    kill_pid(pid)
-                time.sleep(5)
-                cmd = build_download_cmd(args)
-                proc = subprocess.Popen(cmd)
-                pid = proc.pid
-                with open(pidfile, "w") as f:
-                    f.write(str(pid))
-                restart_count += 1
-                last_bytes = dir_bytes(out)
+            # 存活 / 卡死检查（每分钟；发现问题立即介入处理）
+            alive = bool(pid) and is_alive(pid) if pid else False
+            total = dir_bytes(out)
+            growing = total > last_bytes
+            stall_sec = time.time() - last_byte_time
+            note = ""
+            if should_restart(alive, growing, stall_sec, args.stall_min):
+                if args.no_restart:
+                    note = f"⚠ 检测到{'进程死亡' if not alive else '卡死'}（--no-restart 未重启）"
+                    log(glog, f"[WARN] {note}")
+                else:
+                    reason = (
+                        "进程死亡" if not alive else f"卡死（{int(stall_sec // 60)} 分钟无增长）"
+                    )
+                    log(glog, f"[RESTART] {reason}，重启下载")
+                    if pid:
+                        kill_pid(pid)
+                    time.sleep(5)
+                    cmd = build_download_cmd(args)
+                    proc = subprocess.Popen(cmd)
+                    pid = proc.pid
+                    with open(pidfile, "w") as f:
+                        f.write(str(pid))
+                    restart_count += 1
+                    last_bytes = dir_bytes(out)
+                    last_byte_time = time.time()
+                    notify_all(mail, notify, f"下载已重启（第 {restart_count} 次）", reason)
+                    note = f"⚠ 已介入处理: {reason}"
+            if growing:
+                last_bytes = total
                 last_byte_time = time.time()
-                notify_all(mail, notify, f"下载已重启（第 {restart_count} 次）", reason)
-                note = f"⚠ 已介入处理: {reason}"
-        if growing:
-            last_bytes = total
-            last_byte_time = time.time()
 
-        # 30 分钟体检报告（健康也发；异常标注处理结果）
-        if time.time() - last_health >= args.health_interval * 60:
-            prog = parse_progress(logfile)
-            speed = (total - last_health_bytes) / max(time.time() - last_health_time, 1) / 1e6
-            body = health_body(
-                logfile,
-                prog,
-                out,
-                alive=alive,
-                restarts=restart_count,
-                note=note,
-                speed_mbps=speed,
-            )
-            title = f"下载体检 {prog['ok']}/{prog['total']}（{now.strftime('%m-%d %H:%M')}）"
-            notify_all(mail, notify, title, body)
-            log(glog, f"[HEALTH] 体检报告已发送: {prog['ok']}/{prog['total']} | {note or '正常'}")
-            last_health = time.time()
-            last_health_bytes = total
-            last_health_time = time.time()
+            # 30 分钟体检报告（健康也发；异常标注处理结果）
+            if time.time() - last_health >= args.health_interval * 60:
+                prog = parse_progress(logfile)
+                speed = (total - last_health_bytes) / max(time.time() - last_health_time, 1) / 1e6
+                body = health_body(
+                    logfile,
+                    prog,
+                    out,
+                    alive=alive,
+                    restarts=restart_count,
+                    note=note,
+                    speed_mbps=speed,
+                )
+                title = f"下载体检 {prog['ok']}/{prog['total']}（{now.strftime('%m-%d %H:%M')}）"
+                notify_all(mail, notify, title, body)
+                log(
+                    glog,
+                    f"[HEALTH] 体检报告已发送: {prog['ok']}/{prog['total']} | {note or '正常'}",
+                )
+                last_health = time.time()
+                last_health_bytes = total
+                last_health_time = time.time()
+        except SystemExit:
+            raise
+        except Exception as e:
+            # 意外异常绝不退出：记录后继续（2026-08-16 教训：守护曾静默死亡
+            # 且无自愈机制，下载长时间无人管）
+            log(glog, f"[ERR] 体检循环异常（已忽略继续）: {str(e)[:120]}")
+            time.sleep(10)
 
 
 if __name__ == "__main__":

@@ -273,12 +273,16 @@ python scripts/download_guard.py --list 清单.csv --out <下载目录> \
 
 ```bat
 :: 方案：Task Scheduler 计划任务（svchost 拉起，跨工具调用/重启存活）+ 开机自启
-:: 1) 写启动脚本 start_dl_guard.bat（内容 = 上面的 download_guard.py 命令，ASCII 注释）
-:: 2) 计划任务（定时触发，勿用 schtasks /run 直接启动——工具调用衍生的进程树会被回收）
-schtasks /create /tn insar-genie-dl-guard /tr "cmd /c D:\path\start_dl_guard.bat" /sc once /st HH:MM /f
+:: 1) 写启动脚本 start_dl_guard.bat（内容 = 上面的 download_guard.py 命令，ASCII 注释，
+::    并做幂等：先 wmic 检查 download_guard 是否已在跑，在跑则 exit /b 0）
+:: 2) 计划任务用【每 5 分钟循环触发】（不是 once）：守护意外死亡时 5 分钟内自愈拉起
+schtasks /create /tn insar-genie-dl-guard /tr "cmd /c D:\path\start_dl_guard.bat" /sc minute /mo 5 /f
 :: 3) 开机自启（注册表，登录自动拉起）
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InSarGenieDLGuard /t REG_SZ /d "wscript.exe \"D:\path\start_dl_guard.vbs\"" /f
 ```
+
+- **守护本身有异常韧性**：体检循环整体 try/except，任何意外异常记录后继续（不会静默死亡）；
+  配合每 5 分钟循环计划任务 = 守护死了自动拉起、下载器死了守护自动重启，**全链路自愈**。
 
 - **不要**：把下载/守护作为 DSH/pi 会话的后台任务跑（宿主重启即死，可能一夜零进展）；
 - **不要**：同时跑两个下载器（守护 spawn 的 + 手动启动的会写同一批 .part 文件）；
