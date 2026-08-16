@@ -142,43 +142,6 @@ def save_md5_done(out, cache):
         pass
 
 
-def single_download(session, url, dest, total_size, logfile, expected_md5=""):
-    """单连接整文件下载：断点续传 + 重试 + 大小/MD5 校验。
-
-    网络极差时多线程连续作废会自动降级到这个模式。
-    """
-    part = dest + ".part"
-    existing = os.path.getsize(part) if os.path.exists(part) else 0
-    for attempt in range(RETRIES + 2):
-        try:
-            headers = {}
-            if existing:
-                headers["Range"] = f"bytes={existing}-"
-            r = session.get(url, stream=True, headers=headers, timeout=(60, 300))
-            if r.status_code in (200, 206):
-                with open(part, "ab" if existing else "wb") as f:
-                    f.writelines(r.iter_content(1 << 20))
-                size = os.path.getsize(part)
-                if size == total_size:
-                    os.replace(part, dest)
-                    if expected_md5:
-                        log("  计算 MD5 校验中...", logfile)
-                        got = md5_of(dest)
-
-                        if got != expected_md5:
-                            log("  [WARN] MD5 不匹配! 删除重下", logfile)
-                            os.remove(dest)
-                            return False, size
-                    return True, size
-                existing = size  # 未完成，继续
-            else:
-                log(f"  [单连接] HTTP {r.status_code}, 重试 {attempt + 1}", logfile)
-        except Exception as e:
-            log(f"  [单连接] 错误 {str(e)[:60]}, 重试 {attempt + 1}", logfile)
-        time.sleep(8 * (attempt + 1))
-    return False, existing
-
-
 def get_total_size(session, url):
     """Range 探测真实大小（ASF 的 HEAD 不可靠）"""
     r = session.get(url, headers={"Range": "bytes=0-0"}, timeout=(30, 60), stream=True)
@@ -296,95 +259,6 @@ def search_and_group(aoi, start, end, pols):
     return groups, results
 
 
-def read_mode(out_dir):
-    """读取下载模式（multi=多线程分片 / single=单文件）。
-
-    mode.flag 由守护/降级逻辑写入；不存在时默认 multi。
-    首次运行必须不崩溃（2026-08-15 教训：曾因先 open 后判存在导致
-    首跑 FileNotFoundError；修复后曾因镜像同步回旧版复发——故抽成纯函数+测试）。
-    """
-    mode_flag = os.path.join(out_dir, "mode.flag")
-    if os.path.exists(mode_flag):
-        try:
-            with open(mode_flag, encoding="utf-8") as f:
-                if f.read().strip() == "single":
-                    return "single"
-        except OSError:
-            pass
-    return "multi"
-
-
-def maybe_downgrade(mode, fail_streak, threshold, args, logfile):
-    """多线程连续 threshold 个文件作废 → 写 mode.flag 切单文件模式，返回是否已降级退出。
-
-    与 maybe_upgrade 对称：两者都是 (mode, 状态数据, 阈值, args, logfile)，
-    状态数据（失败计数 / 速率历史）由主循环维护并传入，阈值作参数而非隐式常量。
-    2026-08-16 教训：原逻辑只在下载函数返回失败（[FAIL]）时累计 fail_streak，
-    而网络断连（ConnectionReset 等）走 except 分支（[WARN]）不累计——
-    网络越差越走 except，降级反而永远触发不了。故抽成纯函数，两条路径共用。
-    """
-    if mode == "multi" and fail_streak >= threshold:
-        with open(os.path.join(args.out, "mode.flag"), "w", encoding="utf-8") as f:
-            f.write("single")
-        log(
-            f"[DOWNGRADE] 多线程连续 {fail_streak} 文件作废，自动切换单文件模式，退出重启",
-            logfile,
-        )
-        return True
-    return False
-
-
-UPGRADE_MIN_MBPS = 2.0    # 单文件模式速率 ≥ 此值视为网络已恢复（用户指定 2026-08-16）
-UPGRADE_STREAK = 3        # 连续 N 个成功文件达到速率阈值才升级（防速率抖动）
-UPGRADE_COOLDOWN_S = 20 * 60  # 降级后 20 分钟内禁止升级（防模式切换抖动）
-DOWNGRADE_STREAK = 2      # 多线程连续 N 个文件作废才降级（网络极差的保底）
-
-
-def maybe_upgrade(mode, speed_history, streak, args, logfile):
-    """单文件模式速率连续达标 → 清 mode.flag 切回多线程，返回是否已升级退出。
-
-    与 maybe_downgrade 对称：两者都是 (mode, 状态数据, 阈值, args, logfile)，
-    状态数据（速率历史 / 失败计数）由主循环维护并传入，阈值作参数而非隐式常量。
-    2026-08-16 新增：原设计只有降级（multi→single）没有升级（single→multi），
-    夜间/带宽恢复后仍用单连接浪费带宽。此函数在 single 模式下统计近期成功文件
-    的速率（speed_history 由主循环维护，已含本次），连续 streak 个
-    ≥ UPGRADE_MIN_MBPS 就恢复多线程并退出重启。
-
-    防抖双层：
-    - 速率滞回：升级阈值（2MB/s，用户指定 2026-08-16）远高于降级触发（网络极差才降级）；
-    - 切换冷却：降级后 UPGRADE_COOLDOWN_S 内不升级（mode.flag 的 mtime 是
-      降级时刻），防止"升级→波动→降级→又升级"反复退出重启。
-    """
-    if mode != "single":
-        return False
-    recent = speed_history[-streak:] if speed_history else []
-    if len(recent) < streak or not all(s >= UPGRADE_MIN_MBPS for s in recent):
-        return False
-    # 冷却检查：刚降级不久（mode.flag mtime 新）不升级
-    flag = os.path.join(args.out, "mode.flag")
-    if os.path.exists(flag):
-        try:
-            age = time.time() - os.path.getmtime(flag)
-            if age < UPGRADE_COOLDOWN_S:
-                log(
-                    f"[UPGRADE] 跳过：{age / 60:.0f} 分钟前刚降级（冷却 {UPGRADE_COOLDOWN_S // 60} 分钟），暂不升级",
-                    logfile,
-                )
-                return False
-        except OSError:
-            pass
-    try:
-        os.remove(flag)
-    except OSError:
-        pass
-    log(
-        f"[UPGRADE] 单文件模式连续 {streak} 个文件速率 ≥ {UPGRADE_MIN_MBPS:.0f}MB/s"
-        f"（近期 {[round(s,1) for s in recent]}），恢复多线程模式，退出重启",
-        logfile,
-    )
-    return True
-
-
 def main():
     ap = argparse.ArgumentParser(description="ASF 多线程分片下载")
     ap.add_argument("--list", help="清单 CSV（date,frame,orbit,satellite,file 列），优先于搜索路径")
@@ -488,9 +362,8 @@ def main():
 
         log(f"搜索路径: {len(rows)} 景", logfile)
 
-    ok = fail = skip = fail_streak = 0
-    completed = True  # 完整跑完清单才写 complete.flag（降级/中断不写）
-    speed_history = []  # single 模式下近期成功文件速率（MB/s），供自动升级判断
+    ok = fail = skip = 0
+    completed = True  # 完整跑完清单才写 complete.flag（中断不写）
     # 新任务开始：清掉旧 complete.flag（守护/遥控据此恢复工作）
     cf_old = os.path.join(args.out, "complete.flag")
     if os.path.exists(cf_old):
@@ -499,10 +372,9 @@ def main():
             log("[START] 新任务开始，清除旧 complete.flag", logfile)
         except OSError:
             pass
-    # 下载模式：multi=多线程分片，single=单文件（自动降级后，标记存输出目录）
-    mode = read_mode(args.out)
+    # 2026-08-16 简化：始终多线程下载，无降级/升级模式
     md5_cache = load_md5_done(args.out)  # 已校验通过的 md5 缓存（避免重启全量重算）
-    log(f"[MODE] 下载模式: {mode}{'（已自动降级）' if mode == 'single' else ''}", logfile)
+    log("[MODE] 下载模式: multi（固定多线程）", logfile)
     for i, r in enumerate(rows, 1):
         fname = r.get("file", "").strip()
 
@@ -557,16 +429,14 @@ def main():
             log(f"[{i}/{len(rows)}] [DL] {fname[:40]}... {total / 1e9:.2f}GB", logfile)
 
             t0 = time.time()
-            if mode == "multi":
-                ok_flag, size = multi_download(
-                    session, url, dest, total, args.threads, logfile, expected_md5
-                )
-            else:
-                ok_flag, size = single_download(session, url, dest, total, logfile, expected_md5)
+            # 2026-08-16 简化：始终多线程分片下载（移除 single/降级/升级机制）。
+            # 网络慢就慢，靠分片重试 + 补下兜底；夜间网速提升后自然提速。
+            ok_flag, size = multi_download(
+                session, url, dest, total, args.threads, logfile, expected_md5
+            )
             dt = time.time() - t0
             if ok_flag:
                 ok += 1
-                fail_streak = 0
                 # 下载成功且校验过 → 写 md5 缓存（防下次重启重算）
                 if expected_md5:
                     try:
@@ -579,36 +449,12 @@ def main():
                     f"[{i}/{len(rows)}] [OK] {fname[:35]}... {size / 1e9:.2f}GB ({dt / 60:.1f}min, {speed_mbps:.1f}MB/s)",
                     logfile,
                 )
-                # 单文件模式速率连续达标 → 自动升级回多线程（网络恢复的保优）
-                if mode == "single":
-                    speed_history.append(speed_mbps)
-                    # 只保留最近一小段，防无界增长（2026-08-16 审查修复）
-                    if len(speed_history) > UPGRADE_STREAK * 4:
-                        del speed_history[:-UPGRADE_STREAK * 4]
-                    if maybe_upgrade(mode, speed_history, UPGRADE_STREAK, args, logfile):
-                        mode = "multi"  # 语义更新：本进程内后续（如有）按 multi 看待
-                        completed = False
-                        break
             else:
                 fail += 1
-                fail_streak += 1
-                # 失败中断"连续成功"序列：清空速率历史，防止非连续成功触发升级
-                speed_history.clear()
                 log(f"[{i}/{len(rows)}] [FAIL] {fname[:45]}", logfile)
-                # 自动降级：多线程连续 2 个文件作废 → 切单文件模式（网络极差的保底）
-                if maybe_downgrade(mode, fail_streak, DOWNGRADE_STREAK, args, logfile):
-                    completed = False
-                    break
         except Exception as e:
             fail += 1
-            fail_streak += 1
-            # 失败中断"连续成功"序列：清空速率历史（同 FAIL 分支）
-            speed_history.clear()
             log(f"[{i}/{len(rows)}] [WARN] {fname[:45]} :: {str(e)[:80]}", logfile)
-            # 网络断连（ConnectionReset 等）同样累计连续失败，触发自动降级
-            if maybe_downgrade(mode, fail_streak, DOWNGRADE_STREAK, args, logfile):
-                completed = False
-                break
 
         time.sleep(2)
 

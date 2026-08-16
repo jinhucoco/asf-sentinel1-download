@@ -1,129 +1,56 @@
-"""multi_download 模块单元测试（回归：mode.flag 首次运行不崩溃）"""
+"""multi_download 模块单元测试（2026-08-16 简化后：固定多线程 + MD5 缓存）"""
 
 import inspect
 import os
 import sys
-import time
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.multi_download import (
-    DOWNGRADE_STREAK,
-    UPGRADE_COOLDOWN_S,
+    MD5_DONE_FILE,
     get_total_size,
-    maybe_downgrade,
-    maybe_upgrade,
+    load_md5_done,
     md5_of,
-    read_mode,
+    save_md5_done,
 )
 
 
-def test_read_mode_missing_flag(tmp_path):
-    """无 mode.flag（首次运行）→ 默认 multi，不崩溃（2026-08-15 回归案例）"""
-    assert read_mode(str(tmp_path)) == "multi"
+def test_load_md5_done_missing(tmp_path):
+    """无缓存文件 → 空 dict（首次运行不崩溃）"""
+    assert load_md5_done(str(tmp_path)) == {}
 
 
-def test_read_mode_single(tmp_path):
-    """mode.flag 内容 single → 返回 single"""
-    (tmp_path / "mode.flag").write_text("single", encoding="utf-8")
-    assert read_mode(str(tmp_path)) == "single"
+def test_save_and_load_md5_done(tmp_path):
+    """写缓存 → 读回一致"""
+    save_md5_done(str(tmp_path), {"a.zip": "abc123"})
+    assert load_md5_done(str(tmp_path)) == {"a.zip": "abc123"}
 
 
-def test_read_mode_multi_flag(tmp_path):
-    """mode.flag 内容 multi → 返回 multi"""
-    (tmp_path / "mode.flag").write_text("multi", encoding="utf-8")
-    assert read_mode(str(tmp_path)) == "multi"
-
-
-def test_read_mode_other(tmp_path):
-    """mode.flag 内容未知 → 默认 multi"""
-    (tmp_path / "mode.flag").write_text("weird\n", encoding="utf-8")
-    assert read_mode(str(tmp_path)) == "multi"
-
-
-def test_maybe_downgrade_multi_streak(tmp_path):
-    """multi 模式连续 2 文件作废 → 写 mode.flag=single 并返回 True（2026-08-16 回归）"""
-    args = type("Args", (), {"out": str(tmp_path)})()
-    logfile = str(tmp_path / "x.log")
-    assert maybe_downgrade("multi", 1, DOWNGRADE_STREAK, args, logfile) is False
-    assert not (tmp_path / "mode.flag").exists()
-    assert maybe_downgrade("multi", 2, DOWNGRADE_STREAK, args, logfile) is True
-    assert (tmp_path / "mode.flag").read_text(encoding="utf-8").strip() == "single"
-
-
-def test_maybe_downgrade_single_mode(tmp_path):
-    """single 模式不降级、不写 flag"""
-    args = type("Args", (), {"out": str(tmp_path)})()
-    logfile = str(tmp_path / "x.log")
-    assert maybe_downgrade("single", 5, DOWNGRADE_STREAK, args, logfile) is False
-    assert not (tmp_path / "mode.flag").exists()
-
-
-def test_maybe_upgrade_multi_noop(tmp_path):
-    """multi 模式不触发升级（2026-08-16 新增）"""
-    args = type("Args", (), {"out": str(tmp_path)})()
-    logfile = str(tmp_path / "x.log")
-    assert maybe_upgrade("multi", [2.5, 2.4, 2.3], 3, args, logfile) is False
-
-
-def test_maybe_upgrade_slow_noop(tmp_path):
-    """single 模式但速率低于阈值 → 不升级"""
-    args = type("Args", (), {"out": str(tmp_path)})()
-    logfile = str(tmp_path / "x.log")
-    assert maybe_upgrade("single", [1.9, 1.8, 1.7], 3, args, logfile) is False
-
-
-def test_maybe_upgrade_fast(tmp_path):
-    """single 模式连续 3 个达标速率 → 升级并删除 mode.flag"""
-    args = type("Args", (), {"out": str(tmp_path)})()
-    logfile = str(tmp_path / "x.log")
-    assert maybe_upgrade("single", [2.5, 2.4, 2.3], 3, args, logfile) is True
-    assert not (tmp_path / "mode.flag").exists()
-
-
-def test_maybe_upgrade_cooldown(tmp_path):
-    """降级后冷却期内不升级（防模式切换抖动）"""
-    args = type("Args", (), {"out": str(tmp_path)})()
-    logfile = str(tmp_path / "x.log")
-    (tmp_path / "mode.flag").write_text("single", encoding="utf-8")  # mtime=now
-    assert maybe_upgrade("single", [2.5, 2.4, 2.3], 3, args, logfile) is False
-
-
-def test_maybe_upgrade_cooldown_expired(tmp_path):
-    """冷却期过后 → 升级并删除 mode.flag"""
-    args = type("Args", (), {"out": str(tmp_path)})()
-    logfile = str(tmp_path / "x.log")
-    flag = tmp_path / "mode.flag"
-    flag.write_text("single", encoding="utf-8")
-    past = time.time() - UPGRADE_COOLDOWN_S - 5
-    os.utime(flag, (past, past))
-    assert maybe_upgrade("single", [2.5, 2.4, 2.3], 3, args, logfile) is True
-    assert not flag.exists()
-
-
-def test_upgrade_reset_on_fail(tmp_path):
-    """2026-08-16 修复：失败清空 speed_history 后，不足 3 个连续成功不升级"""
-    args = type("Args", (), {"out": str(tmp_path)})()
-    logfile = str(tmp_path / "x.log")
-    flag = tmp_path / "mode.flag"
-    flag.write_text("single", encoding="utf-8")
-    past = time.time() - UPGRADE_COOLDOWN_S - 5
-    os.utime(flag, (past, past))
-    # 模拟主循环：失败时 speed_history.clear()，之后只有 1 个成功
-    h = [2.5, 2.4]
-    h.clear()
-    h.append(2.3)
-    assert maybe_upgrade("single", h, 3, args, logfile) is False
+def test_load_md5_done_corrupt(tmp_path):
+    """缓存文件损坏 → 空 dict（容错）"""
+    (tmp_path / MD5_DONE_FILE).write_text("{bad json", encoding="utf-8")
+    assert load_md5_done(str(tmp_path)) == {}
 
 
 def test_md5_of_small_file(tmp_path):
-    """md5_of 能计算文件 MD5（Bug D 修复依赖）"""
+    """md5_of 能计算文件 MD5"""
     p = tmp_path / "f.bin"
     p.write_bytes(b"hello world")
     assert len(md5_of(str(p))) == 32
 
 
 def test_get_total_size_stream_and_close():
-    """2026-08-16 修复：get_total_size 使用 stream=True 且显式 close（连接释放）"""
+    """get_total_size 使用 stream=True 且显式 close（连接释放）"""
     src = inspect.getsource(get_total_size)
     assert "stream=True" in src
     assert "r.close()" in src
+
+
+def test_no_single_mode_remnants():
+    """2026-08-16 简化：模块不应再有 single/降级/升级机制残留"""
+    import scripts.multi_download as md
+
+    src = inspect.getsource(md)
+    assert "single_download" not in src
+    assert "maybe_downgrade" not in src
+    assert "maybe_upgrade" not in src
+    assert "read_mode" not in src
