@@ -1,22 +1,27 @@
 """ASF 多线程下载守护（download_guard.py）
 
-配合 scripts/multi_download.py 使用：定时体检 + 邮件/微信推送 + 卡死/死亡
-自动重启 + 完成通知。守护会先启动（或接管已运行）下载，再进入监控循环。
+配合 scripts/multi_download.py 使用：周期体检（邮件报告）+ 异常自动介入 +
+完成通知。守护会先启动（或接管已运行）下载，再进入监控循环。
 
 用法（示例）:
     python download_guard.py --list 清单.csv --out G:/minqin_sentinel1 [--threads 8]
-                             [--work-start 9] [--work-end 18] [--report-every 2]
-                             [--stall-min 40] [--no-restart]
+                             [--health-interval 30] [--stall-min 40] [--no-restart]
                              [--mail-config mail_config.json] [--notify-config notify_config.json]
 
-推送策略:
-- 定时进度推送：仅【白天工作时间】按整点网格发（默认 09:00-18:00 每 2 小时一封，
-  即 9/11/13/15/17 点），夜间静默不打扰；
-- 事件推送：启动/完成/重启/卡死 等即时发送（不受时段限制）；
+体检与推送策略（2026-08-16 用户要求）:
+- 每 --health-interval 分钟（默认 30）体检一次：
+  正常 → 邮件发送体检报告（进度/速度/进程状态/重启次数/日志尾部）；
+  异常（进程死亡/卡死）→ 自动介入处理（重启下载）+ 即时通知，报告标注处理结果；
+- 事件推送：启动/完成/重启/卡死 即时发送；
 - 邮件读 mail_config.json（address/authcode/smtp_host/smtp_port，163/QQ SMTP 授权码）；
   微信读 notify_config.json（serverchan.sendkey，sct.ftqq.com），双通道同发。
 - 自动重启：下载进程死亡/卡死（--stall-min 分钟无字节增长）自动重启，断点续传无缝
   续跑；complete.flag 已存在时绝不重启（防无限重启）。
+
+长下载部署建议（2026-08-16 教训）:
+- 本守护**必须脱离 web 宿主独立运行**（web 重启会杀 DSH 后台 job/守护自身）：
+  推荐 Task Scheduler 计划任务（定时触发，svchost 拉起）+ HKCU Run 开机自启；
+  参见 SKILL.md「多线程下载」章节的部署示例。
 """
 
 import argparse
@@ -34,28 +39,8 @@ from email.header import Header
 from email.mime.text import MIMEText
 
 SKILL_SCRIPTS = os.path.dirname(os.path.abspath(__file__))
-DEFAULT_WORK_START = 9
-DEFAULT_WORK_END = 18
-DEFAULT_REPORT_EVERY = 2
+DEFAULT_HEALTH_INTERVAL = 30
 DEFAULT_STALL_MIN = 40
-
-
-# ==================== 纯函数（可离线测试） ====================
-
-
-def next_report_time(work_start, work_end, report_every, now=None):
-    """下一个计划推送时刻（今日 work_start 起每 report_every 小时整点网格）。
-
-    当前已过网格点（或 ≥ work_end）→ None（今天不再推，夜间静默）。
-    now: 可注入（测试用），默认 datetime.now()。
-    """
-    now = now or datetime.now()
-    today = now.date()
-    for h in range(work_start, work_end, report_every):
-        t = datetime(today.year, today.month, today.day, h)
-        if now < t:
-            return t
-    return None
 
 
 # ==================== 纯函数（可离线测试） ====================
@@ -238,7 +223,8 @@ def load_json(path):
         return {}
 
 
-def summary_body(logfile, prog, out):
+def health_body(logfile, prog, out, alive=True, restarts=0, note="", speed_mbps=None):
+    """体检报告正文（进度 + 进程状态 + 重启次数 + 速度 + 日志尾部）"""
     lines = []
     if os.path.exists(logfile):
         try:
@@ -247,10 +233,15 @@ def summary_body(logfile, prog, out):
             lines = ["".join(tail[-8:])]
         except OSError:
             pass
+    speed = f"{speed_mbps:.1f} MB/s" if speed_mbps is not None else "—"
+    state = "✅ 正常" if alive else "❌ 进程不在"
     return (
+        f"体检时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+        f"状态: {state} {note}\n"
         f"完成: {prog['ok']}/{prog['total']} 个文件 | 失败: {prog['fail']} | 跳过: {prog['skip']}\n"
         f"当前: {prog['current'] or '无'}\n"
-        f"已下载: {dir_bytes(out) / 1e9:.2f} GB\n"
+        f"已下载: {dir_bytes(out) / 1e9:.2f} GB | 速度: {speed}\n"
+        f"重启次数: {restarts}\n"
         f"--- 日志尾部 ---\n" + "\n".join(lines)
     )
 
@@ -266,22 +257,10 @@ def main():
     ap.add_argument("--verify-aoi", help="下载前逐时相覆盖复检 AOI（透传）")
     ap.add_argument("--strict", action="store_true", help="复检未达标终止（透传）")
     ap.add_argument(
-        "--work-start",
+        "--health-interval",
         type=int,
-        default=DEFAULT_WORK_START,
-        help="定时进度推送开始小时（默认 9，夜间静默）",
-    )
-    ap.add_argument(
-        "--work-end",
-        type=int,
-        default=DEFAULT_WORK_END,
-        help="定时进度推送结束小时（默认 18，不含）",
-    )
-    ap.add_argument(
-        "--report-every",
-        type=int,
-        default=DEFAULT_REPORT_EVERY,
-        help="工作时段内进度推送间隔（小时，默认 2）",
+        default=DEFAULT_HEALTH_INTERVAL,
+        help="体检间隔（分钟，默认 30）：每周期发一封体检报告邮件，异常自动介入",
     )
     ap.add_argument(
         "--stall-min", type=int, default=DEFAULT_STALL_MIN, help="卡死判定（分钟无增长）"
@@ -330,7 +309,9 @@ def main():
     last_bytes = dir_bytes(out)
     last_byte_time = time.time()
     restart_count = 0
-    next_report = None  # 下一个计划推送时刻（工作时段整点网格）
+    last_health = 0.0  # 首次体检：启动即发
+    last_health_bytes = last_bytes
+    last_health_time = time.time()
 
     while True:
         time.sleep(60)
@@ -339,33 +320,22 @@ def main():
         # 完成检测
         if os.path.exists(complete):
             prog = parse_progress(logfile)
-            body = summary_body(logfile, prog, out)
+            body = health_body(logfile, prog, out, restarts=restart_count)
             title = f"下载完成 {prog['ok']}/{prog['total']}"
             notify_all(mail, notify, title, body)
             log(glog, f"[DONE] complete.flag 出现，发送完成通知（重启 {restart_count} 次）")
             return
 
-        # 定时进度推送：仅白天工作时间整点网格（夜间静默；事件推送不受限）
-        if next_report is None:
-            next_report = next_report_time(args.work_start, args.work_end, args.report_every, now)
-        if next_report is not None and now >= next_report:
-            prog = parse_progress(logfile)
-            title = f"下载进度 {prog['ok']}/{prog['total']}（{now.strftime('%H:%M')}）"
-            body = summary_body(logfile, prog, out)
-            notify_all(mail, notify, title, body)
-            log(glog, f"[MAIL] 计划进度推送: {prog['ok']}/{prog['total']}")
-            next_report = None  # 重新计算下一个网格点
-
-        # 存活 / 卡死检查
+        # 存活 / 卡死检查（每分钟；发现问题立即介入处理）
         alive = bool(pid) and is_alive(pid) if pid else False
         total = dir_bytes(out)
         growing = total > last_bytes
         stall_sec = time.time() - last_byte_time
+        note = ""
         if should_restart(alive, growing, stall_sec, args.stall_min):
             if args.no_restart:
-                log(
-                    glog, f"[WARN] 下载进程{'死亡' if not alive else '卡死'}（--no-restart 不重启）"
-                )
+                note = f"⚠ 检测到{'进程死亡' if not alive else '卡死'}（--no-restart 未重启）"
+                log(glog, f"[WARN] {note}")
             else:
                 reason = "进程死亡" if not alive else f"卡死（{int(stall_sec // 60)} 分钟无增长）"
                 log(glog, f"[RESTART] {reason}，重启下载")
@@ -381,9 +351,30 @@ def main():
                 last_bytes = dir_bytes(out)
                 last_byte_time = time.time()
                 notify_all(mail, notify, f"下载已重启（第 {restart_count} 次）", reason)
+                note = f"⚠ 已介入处理: {reason}"
         if growing:
             last_bytes = total
             last_byte_time = time.time()
+
+        # 30 分钟体检报告（健康也发；异常标注处理结果）
+        if time.time() - last_health >= args.health_interval * 60:
+            prog = parse_progress(logfile)
+            speed = (total - last_health_bytes) / max(time.time() - last_health_time, 1) / 1e6
+            body = health_body(
+                logfile,
+                prog,
+                out,
+                alive=alive,
+                restarts=restart_count,
+                note=note,
+                speed_mbps=speed,
+            )
+            title = f"下载体检 {prog['ok']}/{prog['total']}（{now.strftime('%m-%d %H:%M')}）"
+            notify_all(mail, notify, title, body)
+            log(glog, f"[HEALTH] 体检报告已发送: {prog['ok']}/{prog['total']} | {note or '正常'}")
+            last_health = time.time()
+            last_health_bytes = total
+            last_health_time = time.time()
 
 
 if __name__ == "__main__":
