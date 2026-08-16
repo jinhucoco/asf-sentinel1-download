@@ -82,6 +82,15 @@ def _refresh_proxy(session, logfile):
 def download_chunk(session, url, start, end, part_path, idx, logfile):
     """下载一个分片；已下载部分跳过，失败重试"""
     existing = os.path.getsize(part_path) if os.path.exists(part_path) else 0
+    # 2026-08-16 修复：.part 大小必须等于分片偏移（start），否则是旧 range 残留
+    # （total_size 波动导致 chunk 变化时），续传会错位。不匹配则清空重下。
+    if existing > 0 and existing != start:
+        log(f"  [片{idx}] 续传错位（part={existing}B 期望偏移={start}B），清空重下", logfile)
+        try:
+            os.remove(part_path)
+        except OSError:
+            pass
+        existing = 0
     if existing >= (end - start + 1):
         return True, existing  # 该片已完成
     start += existing
@@ -150,9 +159,9 @@ def single_download(session, url, dest, total_size, logfile, expected_md5=""):
 
 def get_total_size(session, url):
     """Range 探测真实大小（ASF 的 HEAD 不可靠）"""
-    r = session.get(url, headers={"Range": "bytes=0-0"}, timeout=(30, 60))
+    r = session.get(url, headers={"Range": "bytes=0-0"}, timeout=(30, 60), stream=True)
     cr = r.headers.get("Content-Range", "")
-    r.close()  # 释放连接
+    r.close()  # stream=True 时必须显式关闭，否则连接不复用（2026-08-16 修复）
     if cr and "/" in cr:
         return int(cr.split("/")[-1])
     raise ValueError(f"无法获取文件大小: {url[:60]}")
@@ -487,11 +496,6 @@ def main():
             log(f"[{i}/{len(rows)}] [WARN] 非法文件名，跳过: {fname[:50]}", logfile)
             continue
         dest = os.path.join(args.out, fname)
-        if os.path.exists(dest) and os.path.getsize(dest) > 1024:
-            skip += 1
-            log(f"[{i}/{len(rows)}] 跳过(已完成): {fname[:45]}", logfile)
-
-            continue
         try:
             # 每个文件前动态刷新代理（用户开/关代理即时生效，无需重启）
             _refresh_proxy(session, logfile)
@@ -501,8 +505,24 @@ def main():
                 fail += 1
                 continue
             url = prod[0].properties["url"]
-
             expected_md5 = prod[0].properties.get("md5sum", "")
+
+            # 已完成判断（2026-08-16 修复）：有 md5 时强制校验，防残次文件被永久跳过。
+            # 原逻辑只看大小 >1024 就跳过，下载中断留下的残次 zip 会被误判"已完成"。
+            if os.path.exists(dest) and os.path.getsize(dest) > 1024:
+                if expected_md5:
+                    got = md5_of(dest)
+                    if got == expected_md5:
+                        skip += 1
+                        log(f"[{i}/{len(rows)}] 跳过(已完成, MD5 校验通过): {fname[:45]}", logfile)
+                        continue
+                    # MD5 不匹配 → 残次文件，删除重下
+                    log(f"[{i}/{len(rows)}] [WARN] 已存在文件 MD5 不匹配，删除重下: {fname[:45]}", logfile)
+                    os.remove(dest)
+                else:
+                    skip += 1
+                    log(f"[{i}/{len(rows)}] 跳过(已完成, 无 md5 仅大小): {fname[:45]}", logfile)
+                    continue
 
             total = get_total_size(session, url)
             log(f"[{i}/{len(rows)}] [DL] {fname[:40]}... {total / 1e9:.2f}GB", logfile)
@@ -536,6 +556,8 @@ def main():
             else:
                 fail += 1
                 fail_streak += 1
+                # 失败中断"连续成功"序列：清空速率历史，防止非连续成功触发升级
+                speed_history.clear()
                 log(f"[{i}/{len(rows)}] [FAIL] {fname[:45]}", logfile)
                 # 自动降级：多线程连续 2 个文件作废 → 切单文件模式（网络极差的保底）
                 if maybe_downgrade(mode, fail_streak, DOWNGRADE_STREAK, args, logfile):
@@ -544,6 +566,8 @@ def main():
         except Exception as e:
             fail += 1
             fail_streak += 1
+            # 失败中断"连续成功"序列：清空速率历史（同 FAIL 分支）
+            speed_history.clear()
             log(f"[{i}/{len(rows)}] [WARN] {fname[:45]} :: {str(e)[:80]}", logfile)
             # 网络断连（ConnectionReset 等）同样累计连续失败，触发自动降级
             if maybe_downgrade(mode, fail_streak, DOWNGRADE_STREAK, args, logfile):

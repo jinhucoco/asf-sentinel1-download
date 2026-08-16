@@ -1,5 +1,6 @@
 """multi_download 模块单元测试（回归：mode.flag 首次运行不崩溃）"""
 
+import inspect
 import os
 import sys
 import time
@@ -8,8 +9,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scripts.multi_download import (
     DOWNGRADE_STREAK,
     UPGRADE_COOLDOWN_S,
+    get_total_size,
     maybe_downgrade,
     maybe_upgrade,
+    md5_of,
     read_mode,
 )
 
@@ -95,3 +98,32 @@ def test_maybe_upgrade_cooldown_expired(tmp_path):
     os.utime(flag, (past, past))
     assert maybe_upgrade("single", [2.5, 2.4, 2.3], 3, args, logfile) is True
     assert not flag.exists()
+
+
+def test_upgrade_reset_on_fail(tmp_path):
+    """2026-08-16 修复：失败清空 speed_history 后，不足 3 个连续成功不升级"""
+    args = type("Args", (), {"out": str(tmp_path)})()
+    logfile = str(tmp_path / "x.log")
+    flag = tmp_path / "mode.flag"
+    flag.write_text("single", encoding="utf-8")
+    past = time.time() - UPGRADE_COOLDOWN_S - 5
+    os.utime(flag, (past, past))
+    # 模拟主循环：失败时 speed_history.clear()，之后只有 1 个成功
+    h = [2.5, 2.4]
+    h.clear()
+    h.append(2.3)
+    assert maybe_upgrade("single", h, 3, args, logfile) is False
+
+
+def test_md5_of_small_file(tmp_path):
+    """md5_of 能计算文件 MD5（Bug D 修复依赖）"""
+    p = tmp_path / "f.bin"
+    p.write_bytes(b"hello world")
+    assert len(md5_of(str(p))) == 32
+
+
+def test_get_total_size_stream_and_close():
+    """2026-08-16 修复：get_total_size 使用 stream=True 且显式 close（连接释放）"""
+    src = inspect.getsource(get_total_size)
+    assert "stream=True" in src
+    assert "r.close()" in src
