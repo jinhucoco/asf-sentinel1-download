@@ -15,6 +15,7 @@ import argparse
 import csv
 import glob
 import hashlib
+import json
 import os
 import shutil
 import sys
@@ -118,6 +119,27 @@ def md5_of(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+MD5_DONE_FILE = "md5_done.json"  # 输出目录下：已通过校验的文件名 → md5 缓存
+
+
+def load_md5_done(out):
+    """读 MD5 校验缓存（防每次重启对全部已完成文件重算，3.7GB×49 ≈ 20 分钟）。"""
+    try:
+        with open(os.path.join(out, MD5_DONE_FILE), encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+def save_md5_done(out, cache):
+    """写 MD5 校验缓存（增量更新，失败静默）。"""
+    try:
+        with open(os.path.join(out, MD5_DONE_FILE), "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False)
+    except OSError:
+        pass
 
 
 def single_download(session, url, dest, total_size, logfile, expected_md5=""):
@@ -479,6 +501,7 @@ def main():
             pass
     # 下载模式：multi=多线程分片，single=单文件（自动降级后，标记存输出目录）
     mode = read_mode(args.out)
+    md5_cache = load_md5_done(args.out)  # 已校验通过的 md5 缓存（避免重启全量重算）
     log(f"[MODE] 下载模式: {mode}{'（已自动降级）' if mode == 'single' else ''}", logfile)
     for i, r in enumerate(rows, 1):
         fname = r.get("file", "").strip()
@@ -507,12 +530,18 @@ def main():
             url = prod[0].properties["url"]
             expected_md5 = prod[0].properties.get("md5sum", "")
 
-            # 已完成判断（2026-08-16 修复）：有 md5 时强制校验，防残次文件被永久跳过。
-            # 原逻辑只看大小 >1024 就跳过，下载中断留下的残次 zip 会被误判"已完成"。
+            # 已完成判断（2026-08-16 修复）：有 md5 时校验，防残次文件被永久跳过。
+            # 校验结果写入 md5_done.json 缓存，重启后不再全量重算（3.7GB×49≈20分钟）。
             if os.path.exists(dest) and os.path.getsize(dest) > 1024:
                 if expected_md5:
+                    if md5_cache.get(fname) == expected_md5:
+                        skip += 1
+                        log(f"[{i}/{len(rows)}] 跳过(已完成, MD5缓存): {fname[:45]}", logfile)
+                        continue
                     got = md5_of(dest)
                     if got == expected_md5:
+                        md5_cache[fname] = got
+                        save_md5_done(args.out, md5_cache)
                         skip += 1
                         log(f"[{i}/{len(rows)}] 跳过(已完成, MD5 校验通过): {fname[:45]}", logfile)
                         continue
@@ -538,6 +567,13 @@ def main():
             if ok_flag:
                 ok += 1
                 fail_streak = 0
+                # 下载成功且校验过 → 写 md5 缓存（防下次重启重算）
+                if expected_md5:
+                    try:
+                        md5_cache[fname] = expected_md5
+                        save_md5_done(args.out, md5_cache)
+                    except OSError:
+                        pass
                 speed_mbps = size / max(dt, 1) / 1e6
                 log(
                     f"[{i}/{len(rows)}] [OK] {fname[:35]}... {size / 1e9:.2f}GB ({dt / 60:.1f}min, {speed_mbps:.1f}MB/s)",
