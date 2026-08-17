@@ -37,7 +37,14 @@ def submit_batch(page, bbox, hh, mm, dates, email):
     page.locator('input[type="radio"]').nth(1).check()  # Binary grid (ztd)
     page.locator('input[name="email"]').fill(email)
     page.get_by_role("button", name="Submit").click()
-    page.wait_for_url(lambda u: "result.php" in u, timeout=60000)
+    # 轮询等待跳转（2026-08-17 民勤实测：wait_for_url 偶发捕获不到跳转，
+    # 同样日期用轮询 10s 内成功；GACOS 服务端排队时响应慢，放宽到 180s）
+    deadline = time.time() + 180
+    while time.time() < deadline:
+        time.sleep(5)
+        if "result.php" in page.url:
+            return
+    raise TimeoutError("GACOS 提交后 180s 未跳转 result.php")
 
 
 def main():
@@ -104,13 +111,22 @@ def main():
             )
 
             page.wait_for_timeout(6000)
-            try:
-                submit_batch(page, bbox, hh, mm, new, args.email)
-                print(f"批 {i}: {len(new)} 日期提交成功（{new[0]}...{new[-1]}）")
-                with open(done_file, "a", encoding="utf-8") as f:
-                    f.write("\n".join(new) + "\n")
-            except Exception as e:
-                print(f"批 {i} 失败: {str(e)[:80]}")
+            ok = False
+            for attempt in (1, 2):  # 每批最多重试一次（2026-08-17 民勤实测：偶发超时）
+                try:
+                    submit_batch(page, bbox, hh, mm, new, args.email)
+                    print(f"批 {i}: {len(new)} 日期提交成功（{new[0]}...{new[-1]}）")
+                    with open(done_file, "a", encoding="utf-8") as f:
+                        f.write("\n".join(new) + "\n")
+                    ok = True
+                    break
+                except Exception as e:
+                    print(f"批 {i} 第 {attempt} 次失败: {str(e)[:80]}")
+                    if attempt == 1:
+                        print(f"  等待 {args.interval}s 后重试...")
+                        time.sleep(args.interval)
+            if not ok:
+                print(f"批 {i} 重试后仍失败，本次跳过（下次运行自动补交）")
             page.close()
             if i < len(split_batches(dates)):
                 print(f"  等待 {args.interval}s 再提交下一批...")
