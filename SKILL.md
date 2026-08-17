@@ -298,6 +298,23 @@ Register-ScheduledTask -TaskName "insar-genie-dl-guard" -Action $action -Trigger
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InSarGenieDLGuard /t REG_SZ /d "\"C:\Python314\pythonw.exe\" \"D:\path\run_dl_guard.py\"" /f
 ```
 
+- **⚠️ run_dl.py 必须加终态检查（2026-08-17 实测教训）**：启动器只做"进程不在就拉起"会
+  导致下载完成后**无限空转**——计划任务每 5 分钟拉起下载器→MD5 缓存全跳过→守护见
+  complete.flag 退出→再循环。这不是行为 bug（不重下不损坏）而是**设计缺陷**：启动器
+  只查"进程在不在"、不查"任务完没完"。修复=main() 里先检查 complete.flag 是否存在
+  （ab6f1f2 语义：flag 存在即无待下载文件），存在则**直接退出不拉起**：
+
+```python
+def _completed(out):
+    return os.path.exists(os.path.join(out, "complete.flag"))
+
+def main():
+    if _completed(OUT):
+        print("[DONE] 检测到 complete.flag（下载已全部完成），无需拉起")
+        return
+    # ... 原有拉起逻辑
+```
+
 - **守护本身有异常韧性**：体检循环整体 try/except，任何意外异常记录后继续（不会静默死亡）；
   配合每 5 分钟循环计划任务 = 守护死了自动拉起、下载器死了守护自动重启，**全链路自愈**。
 - **无控制台适配**：download_guard.py 的打印用 `safe_print()`（pythonw 下 sys.stdout 为 None 不崩溃）；
