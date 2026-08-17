@@ -364,15 +364,10 @@ def main():
 
     ok = fail = skip = 0
     completed = True  # 完整跑完清单才写 complete.flag（中断不写）
-    # 新任务开始：清掉旧 complete.flag（守护/遥控据此恢复工作）
-    cf_old = os.path.join(args.out, "complete.flag")
-    if os.path.exists(cf_old):
-        try:
-            os.remove(cf_old)
-            log("[START] 新任务开始，清除旧 complete.flag", logfile)
-        except OSError:
-            pass
-    # 2026-08-16 简化：始终多线程下载，无降级/升级模式
+    # 2026-08-17 修复：不再在启动时删除 complete.flag。
+    # 原逻辑每次启动删 flag → 扫描清单期间 flag 缺失 → run_dl（每5分钟）误判
+    # "任务未完成"再次拉起下载器 → 双下载器 + 守护反复重启的无限循环。
+    # complete.flag 只在"发现待下载文件"时删除（见下），全部完成后保持存在。
     md5_cache = load_md5_done(args.out)  # 已校验通过的 md5 缓存（避免重启全量重算）
     log("[MODE] 下载模式: multi（固定多线程）", logfile)
     for i, r in enumerate(rows, 1):
@@ -426,6 +421,14 @@ def main():
                     continue
 
             total = get_total_size(session, url)
+            # 发现待下载文件 → 任务未完成，清除 complete.flag（让守护/run_dl 知道在干活）
+            cf_old = os.path.join(args.out, "complete.flag")
+            if os.path.exists(cf_old):
+                try:
+                    os.remove(cf_old)
+                    log(f"[{i}/{len(rows)}] [START] 有待下载文件，清除旧 complete.flag", logfile)
+                except OSError:
+                    pass
             log(f"[{i}/{len(rows)}] [DL] {fname[:40]}... {total / 1e9:.2f}GB", logfile)
 
             t0 = time.time()
