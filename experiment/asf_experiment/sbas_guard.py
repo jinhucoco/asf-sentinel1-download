@@ -424,7 +424,14 @@ def trace_mtime():
 
 
 def trace_error():
-    """检查 trace 尾部是否有错误关键字"""
+    """检查 trace 尾部是否有错误关键字。
+
+    2026-08-18 民勤教训：**只认致命关键字**（[CORE][!]/Error:/FATAL/call_exit_program）。
+    "baseline estimation failure" 是 burst 级中间诊断，不代表整体失败（连接图
+    trace 可大量出现但仍成功，民勤 2926 对大量标 failure 最终 CG OK）——**绝不能
+    把它加入本列表**，否则守护会误报并中断正常任务。成败判据 = auxiliary.sml
+    步骤标记 + CG_report ACCEPT 数。
+    """
     t = os.path.join(TMP_WORK, 'Process.trace')
     try:
         size = os.path.getsize(t)
