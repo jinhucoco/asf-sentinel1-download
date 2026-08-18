@@ -396,6 +396,49 @@ python scripts/multi_download.py \
 | API 报错 | 检查网络/代理；ASF API 偶发限流，稍后重试 |
 | shp 报错 | 确认 shp 是 WGS84（经纬度）坐标系 |
 
+### ⚠️ GACOS 实操坑（2026-08-17/18 民勤实测沉淀）
+
+**① 日期格式必须是 YYYYMMDD**：从清单 CSV 生成日期列表时，`date` 列可能是
+`2020-01-04`（带连字符），GACOS 提交会直接报"非法日期"。正确做法是从
+`file` 列正则提取：`re.search(r'(\d{8})T', filename)`。
+
+**② 提交"超时"≠未提交**：`gacos_download.py` 曾反复报 Timeout 超时，但同日期
+用轮询 page.url 10 秒就成功——`wait_for_url` 捕获 result.php 跳转不可靠。
+修复后逻辑：轮询 `page.url`（180s 上限）+ 每批最多重试 1 次。
+**已提交成功但因超时误报而重复提交同批日期，会产生重复结果邮件（无害，收一封即可）。**
+
+**③ 163 邮箱 IMAP 风控（Unsafe Login）**：`gacos_fetch.py` 旧版每轮轮询都
+login/logout，短间隔几十次完整登录触发 163 风控，返回 `SELECT Unsafe Login`
+拒绝读信（持续 30 分钟~几小时）。修复后逻辑：**连接复用**（connect_imap 建连
+一次，one_round 复用，失效才重连）+ 认证被拒 30 分钟退避。
+**解除风控**：网页登录 mail.163.com 一次（最快）；或等自动恢复；或重新生成授权码。
+**诊断提示**：IMAP SELECT 必须在 login 之后（imaplib 状态机）。
+
+**④ GACOS 结果用 ImportGACOS 导入后才可用于干涉**（见"配套数据必须处理"章节）。
+
+### ⚠️ config.env 行尾必须是 CRLF（2026-08-18 民勤实测）
+
+cmd 的 `for /f` 解析 LF（`\n`）行尾的 config.env 会**吞掉行内容**（如 SLC_DATA
+值被截断）→ bat 里路径错误。用文本工具写文件后必须转 CRLF：
+PowerShell `(Get-Content -Raw) -replace "\n","\r\n"` 或确认编辑器保存为 CRLF。
+改完 bat 前用 `cmd /c "for /f ..."` 模拟解析验证关键变量值完整。
+
+### ⚠️ AI 操作纪律（2026-08-18 民勤多坑沉淀，重要）
+
+1. **先查交接文档/历史会话，再动手**：用户教过的流程（DEM 三步、GACOS 处理、
+   连接图参数铁律）都记录在案。自由发挥跳过用户教的步骤 = 返工 + 用户不满。
+2. **不中途误判中断长任务**：SARscape 成败只看 `auxiliary.sml` 步骤标记 + 报告
+   ACCEPT 数（见"批处理成败判据铁律"）。trace 中间日志的 failure 是诊断级信息，
+   让任务跑完再判断。曾因误判两次 taskkill 浪费 40 分钟。
+3. **不删用户 GUI 产物**：用户用 GUI 跑出的结果（如连接图）是有效产出，AI 清理
+   残留时**绝不能误删**（曾误删 G:\minqin1_SBAS_processing 的 GUI 连接图结果）。
+   清理前先确认哪些是用户产物。
+4. **改代码前确认版本**：同一文件可能有多个副本且版本不同（如 sbas_guard.py
+   D 盘 v3 旧版 vs 仓库 v4 Guardian 类）——以仓库最新版为基准修改，改后同步
+   全部副本并 MD5 校验，防止旧版覆盖新版。
+5. **bat 里枚举值以官方模板/实测为准**：界面显示名 ≠ 批处理编码（如
+   "Subtract Geoid" 界面名 vs 'SUBTRACT' 编码；Data Units='Geoidal DEM' 不是 'DEM'）。
+
 ## 安全提示
 
 config.json 含明文密码，仅本机使用，切勿分享或提交到仓库。
