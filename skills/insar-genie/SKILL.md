@@ -467,26 +467,32 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 - 矿区/滑坡 → 形变可能非线性 → 建议 quadratic 模型对比 linear
 
 **第 1 步：连接图（Connection Graph）**
-| 参数 | 默认 | 依据/建议 |
+| 参数 | 实测值（古浪/民勤验证）| 依据/建议 |
 |------|------|----------|
-| 超主影像 | 自动选择 | 一般自动即可；手动选可能减少配对 |
+| 超主影像 | 自动选择（中央超参考）| 一般自动即可；手动选可能减少配对 |
 | Max Temporal Baseline | 180 天 | 标准推荐 |
-| Max Normal Baseline | 45-50% | 教程建议；太小易空间失相干 |
-| Max Connections/Acq | ≥5（推荐 10）| 低于 5 反演解不可靠 |
+| Max Normal Baseline | **2%-4%**（实测 MIN=0/MAX=2 或 4）| **用户方法论铁律（2026-08-07 固化）**：所有实验统一 2%-4% 临界基线百分比（S1A IW ≈119-239m），超短基线→干涉图空间失相干极小→相干性更高、相位质量更好。**勿用 SARscape 默认 45%**（教程值，实测远高于用户铁律）|
+| Max Connections/Acq | 10 | 低于 5 反演解不可靠 |
 
 > **连接图不需要 POEORB**：基线计算用 SLC 内嵌轨道状态矢量（SV），无需精密轨道文件（POEORB）。
 > POEORB 只用于第 2 步干涉/轨道精炼，**连接图前不必等待/校验 POEORB**，避免卡在配套数据环节。
+>
+> **成败判据**（见"批处理成败判据铁律"）：trace 里大量 `baseline estimation failure` 是
+> burst 级诊断信息，**不是失败**——让任务跑完（约 19 分钟），看 auxiliary.sml 的
+> `generate_connection_graph=OK` + CG_report 有效配对。曾因误判中断浪费 40 分钟。
 
 **第 2 步：干涉工作流（Interferometric Process）**
-| 参数 | 默认 | 依据/建议 |
+| 参数 | 实测值（古浪/民勤验证）| 依据/建议 |
 |------|------|----------|
-| Range/Azimuth Looks | 7/2（≈30m）| 视数大→噪声低但分辨率降；按地形调整 |
-| 滤波方法 | Goldstein | 最常用；条纹密集用小窗口 |
-| 解缠方法 | **Delaunay MCF** | SBAS 官方推荐！植被/潮湿区优于经典 MCF |
-| 解缠阈值 | 0.2 | 区域增长法 0.15-0.2；低相干区偏低些 |
-| 解缠等级 | 2（大范围低相干）| 减少错误提效率；>2 或致假信号 |
-| 大气校正 | GACOS | 时相齐必选 |
-| 叠掩阴影掩膜 | ON | 山地必开 |
+| Range/Azimuth Looks | **8/2**（≈30m）| 实测用的 8:2；视数大→噪声低但分辨率降；按地形调整 |
+| 滤波方法 | **GOLDSTEIN** 窗 64，相干窗 5×5 | 最常用；条纹密集用小窗口 |
+| 解缠方法 | **MCF**（UPHA_METHOD_TYPE='MCF'）| 实测验证；SBAS 官方也推荐 Delaunay MCF，植被/潮湿区用 Delaunay |
+| 解缠阈值 | **0.2**（UPHA_COH_THRESHOLD）| 区域增长法 0.15-0.2；低相干区偏低些 |
+| 解缠等级 | **1**（UPHA_LEVELS_NBR）| 实测用 1；大范围低相干可用 2 |
+| 大气校正 | **GACOS**（ATMOSPHERE_PD_CMD.EXTERNAL_SENSOR='GACOS'）| 时相齐必选 |
+| 叠掩阴影掩膜 | ON（LAYOVER_SHADOW_MASK_FLAG='OK'）| 山地必开 |
+| 配准 | COREGISTRATION_WITH_DEM_FLAG='OK' | DEM 辅助配准 |
+| 频谱滤波 | INT_SPECTRAL_SHIFT_FILTER_FLAG='OK' | 减少去相干 |
 
 **第 3 步：反演 Step1（形变模型）**
 | 参数 | 默认 | 依据/建议 |
