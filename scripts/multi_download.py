@@ -59,6 +59,7 @@ def _refresh_proxy(session, logfile):
     if not proxy and os.name == "nt":
         try:
             import winreg
+
             with winreg.OpenKey(
                 winreg.HKEY_CURRENT_USER,
                 r"Software\Microsoft\Windows\CurrentVersion\Internet Settings",
@@ -413,7 +414,10 @@ def main():
                         log(f"[{i}/{len(rows)}] 跳过(已完成, MD5 校验通过): {fname[:45]}", logfile)
                         continue
                     # MD5 不匹配 → 残次文件，删除重下
-                    log(f"[{i}/{len(rows)}] [WARN] 已存在文件 MD5 不匹配，删除重下: {fname[:45]}", logfile)
+                    log(
+                        f"[{i}/{len(rows)}] [WARN] 已存在文件 MD5 不匹配，删除重下: {fname[:45]}",
+                        logfile,
+                    )
                     os.remove(dest)
                 else:
                     skip += 1

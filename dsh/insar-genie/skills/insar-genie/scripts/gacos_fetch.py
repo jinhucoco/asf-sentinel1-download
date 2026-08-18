@@ -119,8 +119,11 @@ def main():
             M = None
             if "unsafe" in emsg or "login" in emsg or "denied" in emsg:
                 blocked_until = time.time() + 1800  # 风控：30 分钟退避
-                log(f"IMAP 认证被风控拒绝（{str(e)[:60]}），30 分钟内不再重试。"
-                    f"请网页登录 mail.163.com 后重新运行。", logfile)
+                log(
+                    f"IMAP 认证被风控拒绝（{str(e)[:60]}），30 分钟内不再重试。"
+                    f"请网页登录 mail.163.com 后重新运行。",
+                    logfile,
+                )
             else:
                 log(f"IMAP 连接失败: {str(e)[:80]}", logfile)
             return None
@@ -140,8 +143,11 @@ def main():
             emsg = str(e).lower()
             M = None  # 连接已失效，下轮重连
             if "unsafe" in emsg or "login" in emsg or "denied" in emsg:
-                log(f"IMAP 认证被风控拒绝（{str(e)[:60]}），30 分钟内不再重试。"
-                    f"请网页登录 mail.163.com 后重新运行。", logfile)
+                log(
+                    f"IMAP 认证被风控拒绝（{str(e)[:60]}），30 分钟内不再重试。"
+                    f"请网页登录 mail.163.com 后重新运行。",
+                    logfile,
+                )
             else:
                 log(f"IMAP 操作失败（下轮重连）: {str(e)[:80]}", logfile)
             return 0
