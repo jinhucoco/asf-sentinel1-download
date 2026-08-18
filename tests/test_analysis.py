@@ -1,14 +1,14 @@
-# -*- coding: utf-8 -*-
 """analysis 模块单元测试（本次测试沉淀的经验）"""
 
-import sys, os
+import os
+import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from analysis import (
-    check_per_date_coverage,
-    check_orbit_consistency,
-    check_satellite_consistency,
     analyze_frame_coverage,
+    check_orbit_consistency,
+    check_per_date_coverage,
+    check_satellite_consistency,
     monthly_sample,
 )
 
@@ -152,6 +152,7 @@ def test_verify_download_list_pruned():
 def test_plot_coverage_orbit_filter(tmp_path):
     """覆盖图按轨道过滤：同 frame 不同轨道 footprint 区分，不混画"""
     import os
+
     from analysis import plot_coverage
 
     class FakeGeo:
@@ -213,6 +214,7 @@ def test_sample_by_frequency():
 def test_plot_coverage_orbit_str_int():
     """覆盖图轨道号 int/str 兼容（修复：str 轨道号过滤 bug）"""
     import os
+
     from analysis import plot_coverage
 
     class FakeGeo:

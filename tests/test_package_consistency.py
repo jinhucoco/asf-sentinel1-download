@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """发布一致性测试：skills/insar-genie/（发布镜像）必须与仓库根目录源一致。
 
 背景：仓库根目录是唯一编辑源；skills/ 子目录是自包含发布镜像
@@ -12,6 +11,7 @@
 DSH 预设（2026-08-14）：dsh/insar-genie/skills/insar-genie/ 是 DSH 插件
 自带的技能副本（随预设安装分发），同样必须与根目录源一致。
 """
+
 import os
 
 import pytest
@@ -34,7 +34,9 @@ def _mirror_files():
     REPO_ONLY = {"verify_clone.py"}
 
     def clean(names):
-        return sorted(n for n in names if not n.startswith("__") and n != "__pycache__" and n not in REPO_ONLY)
+        return sorted(
+            n for n in names if not n.startswith("__") and n != "__pycache__" and n not in REPO_ONLY
+        )
 
     root_scripts = clean(os.listdir(os.path.join(REPO, "scripts")))
     mirror_scripts = clean(os.listdir(os.path.join(MIRROR, "scripts")))
@@ -102,7 +104,14 @@ def test_dsh_preset_skill_matches_root(name):
 
 def test_dsh_preset_has_no_forbidden_files():
     """DSH 预设技能副本不应包含真实凭证/本机配置"""
-    forbidden = {"config.json", "__pycache__", "install.sh", "config.env", "notify_config.json", "mail_config.json"}
+    forbidden = {
+        "config.json",
+        "__pycache__",
+        "install.sh",
+        "config.env",
+        "notify_config.json",
+        "mail_config.json",
+    }
     for f in os.listdir(DSH_PRESET):
         assert f not in forbidden, f"DSH 预设技能目录包含禁止文件: {f}"
     for sub in ("scripts", "experiment"):

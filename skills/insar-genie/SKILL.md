@@ -346,6 +346,7 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InSarGenieDLGuar
 def _completed(out):
     return os.path.exists(os.path.join(out, "complete.flag"))
 
+
 def main():
     if _completed(OUT):
         print("[DONE] 检测到 complete.flag（下载已全部完成），无需拉起")

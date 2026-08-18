@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """download_guard 模块单元测试"""
 
 import os

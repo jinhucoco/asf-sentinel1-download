@@ -146,6 +146,44 @@ python scripts/dem_download.py \
 
 > 依赖：GACOS 需 `pip install playwright && playwright install chromium`；DEM 需 `pip install earthaccess`
 
+### ⚠️ 配套数据必须处理后才可用于干涉（2026-08-18 民勤沉淀，用户教学）
+
+**下载 ≠ 可用**：NASADEM 的 .hgt 和 GACOS 的 .ztd 都不能直接喂给 SARscape 干涉，
+必须按下面的标准流程处理（否则干涉 DEM 报错 / 大气校正失效）。
+
+#### DEM 处理三步（SARscape 标准流程，用户教学，实测枚举值）
+
+```text
+① ENVI /Mosaicking/Seamless Mosaic：拼接下载的 hgt 分幅 → xxx.dat（ENVI 格式）
+   覆盖要求：完全覆盖研究区即可（不必凑 4 幅，如民勤 2 幅 n38e102/103 足够）
+② SARscape /Import Data/ENVI Format/Original ENVI：导入 xxx.dat，两个必设参数：
+     Data Units = Geoidal DEM     ← 不是 'DEM'，是 'Geoidal DEM'（实测枚举）
+     Geoid Type = EGM96
+   导出 xxx.dat_envi
+③ SARscape /General Tools/Cartographic Transformation/Geoid Component：
+     Geoid Operation = Subtract Geoid（批处理编码 'SUBTRACT'，界面显示带空格）
+     Geoid Type = EGM96
+   输出 xxx_dem（最终 DEM，干涉 DEM_FILE 用这个）
+```
+
+批处理模块与参数名（官方大写全名）：
+- 模块 `ImportEnviOriginal`，参数 `MAIN_BASIC_IMPORT_FILE_ENVI_ORIGINAL_CMD.INPUT_FILE_LIST / OUTPUT_FILE_LIST / DATA_UNITS / GEOID_TYPE`
+- 模块 `ToolsGeoid`，参数 `MAIN_TOOLS_GEOID_CMD.INPUT_FILE_NAME / OUTPUT_FILE_NAME / GEOID_OPERATION / GEOID_TYPE`
+- 产物验证：`xxx_dem` + `.hdr` + `.sml` 齐全（sml 里 `<GeocodedImage>OK</GeocodedImage>`）
+
+#### GACOS 处理（ImportGACOS 导入）
+
+```text
+① 下载 .ztd（scripts/gacos_fetch.py，见上）
+② SARscape /Import Data/Other Format/GACOS：导入 .ztd → SARscape 格式
+   批处理模块 `ImportGACOS`，参数 `MAIN_BASIC_IMPORT_GACOS_CMD.INPUT_FILE_LIST / OUTPUT_FILE_LIST`
+③ 产物：每个日期生成 数据+.hdr+.sml（+_ql.tif/kml），干涉的
+   WATER_VAPOUR_FILE_LIST 用这些导入后的产物路径列表
+```
+
+**经验**：批处理 SetParam 枚举值以官方模板/实测为准，界面显示值（如 "Subtract Geoid"）可能
+与批处理编码（'SUBTRACT'）不同；Data Units 的正确枚举是 'Geoidal DEM'（不是 'DEM'）。
+
 ## 安装后必做：配置全部账户 🔑
 
 **安装完成后第一件事：按需配置好以下账户**（未配置会认证失败或功能不可用）：
@@ -308,6 +346,7 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InSarGenieDLGuar
 def _completed(out):
     return os.path.exists(os.path.join(out, "complete.flag"))
 
+
 def main():
     if _completed(OUT):
         print("[DONE] 检测到 complete.flag（下载已全部完成），无需拉起")
@@ -358,6 +397,51 @@ python scripts/multi_download.py \
 | API 报错 | 检查网络/代理；ASF API 偶发限流，稍后重试 |
 | shp 报错 | 确认 shp 是 WGS84（经纬度）坐标系 |
 
+### ⚠️ GACOS 实操坑（2026-08-17/18 民勤实测沉淀）
+
+**① 日期格式必须是 YYYYMMDD**：从清单 CSV 生成日期列表时，`date` 列可能是
+`2020-01-04`（带连字符），GACOS 提交会直接报"非法日期"。正确做法是从
+`file` 列正则提取：`re.search(r'(\d{8})T', filename)`。
+
+**② 提交"超时"≠未提交**：`gacos_download.py` 曾反复报 Timeout 超时，但同日期
+用轮询 page.url 10 秒就成功——`wait_for_url` 捕获 result.php 跳转不可靠。
+修复后逻辑：轮询 `page.url`（180s 上限）+ 每批最多重试 1 次。
+**已提交成功但因超时误报而重复提交同批日期，会产生重复结果邮件（无害，收一封即可）。**
+
+**③ 163 邮箱 IMAP 风控（Unsafe Login）**：`gacos_fetch.py` 旧版每轮轮询都
+login/logout，短间隔几十次完整登录触发 163 风控，返回 `SELECT Unsafe Login`
+拒绝读信（持续 30 分钟~几小时）。修复后逻辑：**连接复用**（connect_imap 建连
+一次，one_round 复用，失效才重连）+ 认证被拒 30 分钟退避。
+**解除风控**：网页登录 mail.163.com 一次（最快）；或等自动恢复；或重新生成授权码。
+**诊断提示**：IMAP SELECT 必须在 login 之后（imaplib 状态机）。
+
+**④ GACOS 结果用 ImportGACOS 导入后才可用于干涉**（见"配套数据必须处理"章节）。
+
+### ⚠️ config.env 行尾必须是 CRLF（2026-08-18 民勤实测）
+
+cmd 的 `for /f` 解析 LF（`\n`）行尾的 config.env 会**吞掉行内容**（如 SLC_DATA
+值被截断）→ bat 里路径错误。用文本工具写文件后必须转 CRLF：
+PowerShell `(Get-Content -Raw) -replace "\n","\r\n"` 或确认编辑器保存为 CRLF。
+改完 bat 前用 `cmd /c "for /f ..."` 模拟解析验证关键变量值完整。
+
+### ⚠️ AI 操作纪律（2026-08-18 民勤多坑沉淀，重要）
+
+1. **先查 SKILL.md，再动手**：本技能文档是唯一权威操作手册——用户教的流程
+   （DEM 三步、GACOS 处理、连接图参数铁律、成败判据）都已沉淀在本文档。
+   动手前先检索本文档对应章节，**不要自由发挥跳过文档记录的步骤**
+   （曾跳过用户教的 DEM 三步流程自由拼接，返工 + 用户不满）。
+2. **不中途误判中断长任务**：SARscape 成败只看 `auxiliary.sml` 步骤标记 + 报告
+   ACCEPT 数（见"批处理成败判据铁律"）。trace 中间日志的 failure 是诊断级信息，
+   让任务跑完再判断。曾因误判两次 taskkill 浪费 40 分钟。
+3. **不删用户 GUI 产物**：用户用 GUI 跑出的结果（如连接图）是有效产出，AI 清理
+   残留时**绝不能误删**（曾误删 G:\minqin1_SBAS_processing 的 GUI 连接图结果）。
+   清理前先确认哪些是用户产物。
+4. **改代码前确认版本**：同一文件可能有多个副本且版本不同（如 sbas_guard.py
+   D 盘 v3 旧版 vs 仓库 v4 Guardian 类）——以仓库最新版为基准修改，改后同步
+   全部副本并 MD5 校验，防止旧版覆盖新版。
+5. **bat 里枚举值以官方模板/实测为准**：界面显示名 ≠ 批处理编码（如
+   "Subtract Geoid" 界面名 vs 'SUBTRACT' 编码；Data Units='Geoidal DEM' 不是 'DEM'）。
+
 ## 安全提示
 
 config.json 含明文密码，仅本机使用，切勿分享或提交到仓库。
@@ -378,32 +462,70 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 ### 参数确认流程（必须按序执行）
 
 **第 0 步：识别研究区地形特征**（决定参数推荐方向）
-- 向用户确认研究区类型：山区/平原/矿区/城市/滑坡区/植被区？
-- 植被茂密区 → 低相干 → 推荐大视数 + Delaunay MCF + 低解缠阈值
-- 城市/裸岩区 → 高相干 → 可小视数 + 经典 MCF + 高阈值
-- 矿区/滑坡 → 形变可能非线性 → 建议 quadratic 模型对比 linear
+
+> **SBAS-InSAR 无普适参数**——面对研究区先识别地形，再按地形参数表推荐。
+> （来源：2026-08-06 学术论文系统学习固化，金川/红会矿区、北京城市、青藏冻土、
+> 甘肃黄土滑坡、复杂植被山区等真实案例）
+
+**地形参数表（核心决策知识）**：
+
+| 地形类型 | 多视 | 时间基线 | 空间基线 | 滤波 | 解缠 | 相干阈值 | 形变模型 |
+|---------|------|---------|---------|------|------|---------|---------|
+| 矿区（快速大形变）| 4:1~7:2 | 短(36-90天) | 2-4%（见铁律）| Goldstein | MCF/Delaunay | 0.2-0.3 | **quadratic 或分段线性** |
+| 城市沉降（慢小形变）| 4:1~5:1 | 中(120-180天) | 2-4% | Goldstein | MCF | 0.3 | linear |
+| 滑坡（局部非线性）| 5:1~7:2 | 中(90-180天) | 2-4% | Goldstein | **Delaunay MCF** | 0.2-0.3 | linear+速率阈值筛选 |
+| 黄土高原（低相干）| 7:2~8:2 | 中(180天) | 2-4% | Goldstein+强滤波 | **Delaunay MCF** | 0.15-0.2 | linear |
+| 高山植被区（强失相干）| 7:2~8:2 | 短(90天) | 2-4% | Goldstein+NL滤波 | **Delaunay MCF** | 0.15-0.2 | linear |
+| 冻土/冰川（季节性）| 5:1~7:2 | 短(36-90天) | 2-4% | Goldstein | MCF | 0.3 | **periodic 周期模型** |
+| 农业/耕地（时间失相干）| 7:2~8:2 | 短(36-90天) | 2-4% | Goldstein | MCF/Delaunay | 0.2 | linear |
+
+**关键参数调整逻辑**：
+1. **多视**：视数↑ → 噪声↓ 但分辨率↓。矿区/城市用 4:1-5:1（高分辨率细节），黄土/植被/大范围用 7:2-8:2（≈30m 稳健）
+2. **时间基线**：形变越快 → 基线越短（矿区 36-90 天，城市可 120-180 天），避免快速形变区时间去相干
+3. **空间基线**：统一 **2%-4%**（见空间基线铁律执行流程），低相干区必要时用 150-200m 绝对基线
+4. **滤波**：Goldstein 通用；低相干区加大 alpha/窗口
+5. **解缠**：高相干（城市）MCF；植被/复杂区 **Delaunay MCF**（处理孤立高相干区）
+6. **相干阈值**：高相干区 0.3；低相干区 0.15-0.2（保留更多像元）
+7. **形变模型**：linear 默认；矿区/滑坡非线性 → quadratic/分段线性；冻土季节性 → periodic
+8. **GCP**：城市/裸岩易选；矿区/植被用自动提取（多阈值/振幅离差）
+9. **精度验证**：有水准/GNSS 实测数据时按 CH/T 6006-2018 做精度分级验证
+
+**空间基线铁律执行流程（2026-08-07 用户方法论固化）**：
+1. 连接图先设 **2%**（MIN_PERC_BASELINE=0, MAX_PERC_BASELINE=2，S1A IW ≈119m）
+2. 跑完查 CG_report.txt 连接率：
+   - 大部分连上（≥99%）→ 保持 2% ✅
+   - 大部分没连上 → 扩大至 **4%**（MAX_PERC_BASELINE=4，≈239m）
+   - 4% 仍不足 → 考虑更宽 + **相应放大时间阈值**（联动保持干涉对数量合理）
+3. 为什么 2-4%：超短空间基线 → 干涉图空间失相干极小 → 相干性更高、相位质量更好；
+   论文佐证矿区 550m（≈9%）已比默认严格；2-4%（119-239m）更优。对比旧默认 45%≈2687m 相差约 20 倍。
 
 **第 1 步：连接图（Connection Graph）**
-| 参数 | 默认 | 依据/建议 |
+| 参数 | 实测值（古浪/民勤验证）| 依据/建议 |
 |------|------|----------|
-| 超主影像 | 自动选择 | 一般自动即可；手动选可能减少配对 |
+| 超主影像 | 自动选择（中央超参考）| 一般自动即可；手动选可能减少配对 |
 | Max Temporal Baseline | 180 天 | 标准推荐 |
-| Max Normal Baseline | 45-50% | 教程建议；太小易空间失相干 |
-| Max Connections/Acq | ≥5（推荐 10）| 低于 5 反演解不可靠 |
+| Max Normal Baseline | **2%-4%**（实测 MIN=0/MAX=2 或 4）| **用户方法论铁律（2026-08-07 固化）**：所有实验统一 2%-4% 临界基线百分比（S1A IW ≈119-239m），超短基线→干涉图空间失相干极小→相干性更高、相位质量更好。**勿用 SARscape 默认 45%**（教程值，实测远高于用户铁律）|
+| Max Connections/Acq | 10 | 低于 5 反演解不可靠 |
 
 > **连接图不需要 POEORB**：基线计算用 SLC 内嵌轨道状态矢量（SV），无需精密轨道文件（POEORB）。
 > POEORB 只用于第 2 步干涉/轨道精炼，**连接图前不必等待/校验 POEORB**，避免卡在配套数据环节。
+>
+> **成败判据**（见"批处理成败判据铁律"）：trace 里大量 `baseline estimation failure` 是
+> burst 级诊断信息，**不是失败**——让任务跑完（约 19 分钟），看 auxiliary.sml 的
+> `generate_connection_graph=OK` + CG_report 有效配对。曾因误判中断浪费 40 分钟。
 
 **第 2 步：干涉工作流（Interferometric Process）**
-| 参数 | 默认 | 依据/建议 |
+| 参数 | 实测值（古浪/民勤验证）| 依据/建议 |
 |------|------|----------|
-| Range/Azimuth Looks | 7/2（≈30m）| 视数大→噪声低但分辨率降；按地形调整 |
-| 滤波方法 | Goldstein | 最常用；条纹密集用小窗口 |
-| 解缠方法 | **Delaunay MCF** | SBAS 官方推荐！植被/潮湿区优于经典 MCF |
-| 解缠阈值 | 0.2 | 区域增长法 0.15-0.2；低相干区偏低些 |
-| 解缠等级 | 2（大范围低相干）| 减少错误提效率；>2 或致假信号 |
-| 大气校正 | GACOS | 时相齐必选 |
-| 叠掩阴影掩膜 | ON | 山地必开 |
+| Range/Azimuth Looks | **8/2**（≈30m）| 实测用的 8:2；视数大→噪声低但分辨率降；按地形调整 |
+| 滤波方法 | **GOLDSTEIN** 窗 64，相干窗 5×5 | 最常用；条纹密集用小窗口 |
+| 解缠方法 | **MCF**（UPHA_METHOD_TYPE='MCF'）| 实测验证；SBAS 官方也推荐 Delaunay MCF，植被/潮湿区用 Delaunay |
+| 解缠阈值 | **0.2**（UPHA_COH_THRESHOLD）| 区域增长法 0.15-0.2；低相干区偏低些 |
+| 解缠等级 | **1**（UPHA_LEVELS_NBR）| 实测用 1；大范围低相干可用 2 |
+| 大气校正 | **GACOS**（ATMOSPHERE_PD_CMD.EXTERNAL_SENSOR='GACOS'）| 时相齐必选 |
+| 叠掩阴影掩膜 | ON（LAYOVER_SHADOW_MASK_FLAG='OK'）| 山地必开 |
+| 配准 | COREGISTRATION_WITH_DEM_FLAG='OK' | DEM 辅助配准 |
+| 频谱滤波 | INT_SPECTRAL_SHIFT_FILTER_FLAG='OK' | 减少去相干 |
 
 **第 3 步：反演 Step1（形变模型）**
 | 参数 | 默认 | 依据/建议 |
