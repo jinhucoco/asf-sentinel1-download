@@ -27,27 +27,45 @@ _CFG = load_config()
 WORK_DIR = _CFG.get("WORK_DIR", "D:/work/data")
 WORKDIR = os.path.join(WORK_DIR, "asf_experiment")
 SBAS_ROOT = _CFG.get("RESULT_ROOT", "G:/gulang2_result_SBAS_processing")
-CG_DIR = os.path.join(SBAS_ROOT, "CG_gulang2_SBAS_processing")
+# CG 目录名可配置（config.env CG_DIR_NAME；默认古浪名，民勤=CG_minqin_full_SBAS_processing）
+CG_DIR = os.path.join(SBAS_ROOT, _CFG.get("CG_DIR_NAME", "CG_gulang2_SBAS_processing"))
 TMP_WORK = os.path.join(SBAS_ROOT, "tmp", "work")
 WORK_STACK = os.path.join(CG_DIR, "work", "work_interferogram_stacking")
 BAT_FILE = os.path.join(WORK_DIR, _CFG.get("INTERF_BAT", "bat/02_interferogram/run_interf.bat"))
 # ---- 多步骤监控（SBAS 五步，按 auxiliary.sml 状态推进）----
+# bat 名可配置（config.env BAT_PREFIX，如民勤用 _minqin 后缀）
+_BP = _CFG.get("BAT_PREFIX", "")
 STEPS = [
     (
         "step1_connection",
         ("generate_connection_graph",),
         "第 1 步 连接图",
-        "bat/01_connection_graph/run_cg_final.bat",
+        f"bat/01_connection_graph/run_cg_final{_BP}.bat",
     ),
     (
         "step2_interferogram",
         ("interf_stack", "unwrapping"),
         "第 2 步 干涉+解缠",
-        "bat/02_interferogram/run_interf.bat",
+        f"bat/02_interferogram/run_interf{_BP}.bat",
     ),
-    ("step3_inversion1", ("first_inversion",), "第 3 步 反演1", "bat/03_inversion/run_inv1.bat"),
-    ("step4_inversion2", ("second_inversion",), "第 4 步 反演2", "bat/03_inversion/run_inv2.bat"),
-    ("step5_geocode", ("geocod_reflat",), "第 5 步 地理编码", "bat/04_geocode/run_geocode.bat"),
+    (
+        "step3_inversion1",
+        ("first_inversion",),
+        "第 3 步 反演1",
+        f"bat/03_inversion/run_inv1{_BP}.bat",
+    ),
+    (
+        "step4_inversion2",
+        ("second_inversion",),
+        "第 4 步 反演2",
+        f"bat/03_inversion/run_inv2{_BP}.bat",
+    ),
+    (
+        "step5_geocode",
+        ("geocod_reflat",),
+        "第 5 步 地理编码",
+        f"bat/04_geocode/run_geocode{_BP}.bat",
+    ),
 ]
 LOG = os.path.join(WORKDIR, "sbas_guard.log")
 CFG_FILE = os.path.join(WORKDIR, "notify_config.json")
