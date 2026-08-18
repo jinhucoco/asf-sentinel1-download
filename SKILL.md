@@ -146,6 +146,44 @@ python scripts/dem_download.py \
 
 > 依赖：GACOS 需 `pip install playwright && playwright install chromium`；DEM 需 `pip install earthaccess`
 
+### ⚠️ 配套数据必须处理后才可用于干涉（2026-08-18 民勤沉淀，用户教学）
+
+**下载 ≠ 可用**：NASADEM 的 .hgt 和 GACOS 的 .ztd 都不能直接喂给 SARscape 干涉，
+必须按下面的标准流程处理（否则干涉 DEM 报错 / 大气校正失效）。
+
+#### DEM 处理三步（SARscape 标准流程，用户教学，实测枚举值）
+
+```text
+① ENVI /Mosaicking/Seamless Mosaic：拼接下载的 hgt 分幅 → xxx.dat（ENVI 格式）
+   覆盖要求：完全覆盖研究区即可（不必凑 4 幅，如民勤 2 幅 n38e102/103 足够）
+② SARscape /Import Data/ENVI Format/Original ENVI：导入 xxx.dat，两个必设参数：
+     Data Units = Geoidal DEM     ← 不是 'DEM'，是 'Geoidal DEM'（实测枚举）
+     Geoid Type = EGM96
+   导出 xxx.dat_envi
+③ SARscape /General Tools/Cartographic Transformation/Geoid Component：
+     Geoid Operation = Subtract Geoid（批处理编码 'SUBTRACT'，界面显示带空格）
+     Geoid Type = EGM96
+   输出 xxx_dem（最终 DEM，干涉 DEM_FILE 用这个）
+```
+
+批处理模块与参数名（官方大写全名）：
+- 模块 `ImportEnviOriginal`，参数 `MAIN_BASIC_IMPORT_FILE_ENVI_ORIGINAL_CMD.INPUT_FILE_LIST / OUTPUT_FILE_LIST / DATA_UNITS / GEOID_TYPE`
+- 模块 `ToolsGeoid`，参数 `MAIN_TOOLS_GEOID_CMD.INPUT_FILE_NAME / OUTPUT_FILE_NAME / GEOID_OPERATION / GEOID_TYPE`
+- 产物验证：`xxx_dem` + `.hdr` + `.sml` 齐全（sml 里 `<GeocodedImage>OK</GeocodedImage>`）
+
+#### GACOS 处理（ImportGACOS 导入）
+
+```text
+① 下载 .ztd（scripts/gacos_fetch.py，见上）
+② SARscape /Import Data/Other Format/GACOS：导入 .ztd → SARscape 格式
+   批处理模块 `ImportGACOS`，参数 `MAIN_BASIC_IMPORT_GACOS_CMD.INPUT_FILE_LIST / OUTPUT_FILE_LIST`
+③ 产物：每个日期生成 数据+.hdr+.sml（+_ql.tif/kml），干涉的
+   WATER_VAPOUR_FILE_LIST 用这些导入后的产物路径列表
+```
+
+**经验**：批处理 SetParam 枚举值以官方模板/实测为准，界面显示值（如 "Subtract Geoid"）可能
+与批处理编码（'SUBTRACT'）不同；Data Units 的正确枚举是 'Geoidal DEM'（不是 'DEM'）。
+
 ## 安装后必做：配置全部账户 🔑
 
 **安装完成后第一件事：按需配置好以下账户**（未配置会认证失败或功能不可用）：
