@@ -346,7 +346,6 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InSarGenieDLGuar
 def _completed(out):
     return os.path.exists(os.path.join(out, "complete.flag"))
 
-
 def main():
     if _completed(OUT):
         print("[DONE] 检测到 complete.flag（下载已全部完成），无需拉起")
@@ -518,6 +517,7 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 | 参数 | 实测值（古浪/民勤验证）| 依据/建议 |
 |------|------|----------|
 | Range/Azimuth Looks | **8/2**（≈30m）| 实测用的 8:2；视数大→噪声低但分辨率降；按地形调整 |
+| **GRID_SIZE_FOR_SUGGESTED_LOOKS** | **30**（对应 8:2）| **用户规则：多视比→grid size 对应（4:1→15m, 8:2→30m）；研究区>800km² 用 7:2/8:2。参数名 `MAIN_INSAR_STACK_SBAS_INTERFEROGRAM_GENERATION_CMD.GRID_SIZE_FOR_SUGGESTED_LOOKS`，默认 15 必须改** |
 | 滤波方法 | **GOLDSTEIN** 窗 64，相干窗 5×5 | 最常用；条纹密集用小窗口 |
 | 解缠方法 | **MCF**（UPHA_METHOD_TYPE='MCF'）| 实测验证；SBAS 官方也推荐 Delaunay MCF，植被/潮湿区用 Delaunay |
 | 解缠阈值 | **0.2**（UPHA_COH_THRESHOLD）| 区域增长法 0.15-0.2；低相干区偏低些 |
