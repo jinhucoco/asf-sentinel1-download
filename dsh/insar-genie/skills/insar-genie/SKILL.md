@@ -298,6 +298,23 @@ Register-ScheduledTask -TaskName "insar-genie-dl-guard" -Action $action -Trigger
 reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InSarGenieDLGuard /t REG_SZ /d "\"C:\Python314\pythonw.exe\" \"D:\path\run_dl_guard.py\"" /f
 ```
 
+- **⚠️ run_dl.py 必须加终态检查（2026-08-17 实测教训）**：启动器只做"进程不在就拉起"会
+  导致下载完成后**无限空转**——计划任务每 5 分钟拉起下载器→MD5 缓存全跳过→守护见
+  complete.flag 退出→再循环。这不是行为 bug（不重下不损坏）而是**设计缺陷**：启动器
+  只查"进程在不在"、不查"任务完没完"。修复=main() 里先检查 complete.flag 是否存在
+  （ab6f1f2 语义：flag 存在即无待下载文件），存在则**直接退出不拉起**：
+
+```python
+def _completed(out):
+    return os.path.exists(os.path.join(out, "complete.flag"))
+
+def main():
+    if _completed(OUT):
+        print("[DONE] 检测到 complete.flag（下载已全部完成），无需拉起")
+        return
+    # ... 原有拉起逻辑
+```
+
 - **守护本身有异常韧性**：体检循环整体 try/except，任何意外异常记录后继续（不会静默死亡）；
   配合每 5 分钟循环计划任务 = 守护死了自动拉起、下载器死了守护自动重启，**全链路自愈**。
 - **无控制台适配**：download_guard.py 的打印用 `safe_print()`（pythonw 下 sys.stdout 为 None 不崩溃）；
@@ -373,6 +390,9 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 | Max Temporal Baseline | 180 天 | 标准推荐 |
 | Max Normal Baseline | 45-50% | 教程建议；太小易空间失相干 |
 | Max Connections/Acq | ≥5（推荐 10）| 低于 5 反演解不可靠 |
+
+> **连接图不需要 POEORB**：基线计算用 SLC 内嵌轨道状态矢量（SV），无需精密轨道文件（POEORB）。
+> POEORB 只用于第 2 步干涉/轨道精炼，**连接图前不必等待/校验 POEORB**，避免卡在配套数据环节。
 
 **第 2 步：干涉工作流（Interferometric Process）**
 | 参数 | 默认 | 依据/建议 |
@@ -476,6 +496,27 @@ wake_ai() →
 - 疑似停滞 → AI 查 main_sbas CPU 活跃/trace → 判断真停滞还是误判（内存密集不写盘≠停滞）
 - 崩溃重启 → AI 查 trace 错误/配置 → 决定是否调整
 - 阶段完成 → AI 检查产物质量 → 确认再进下一步
+
+### ⚠️ SARscape 批处理成败判据铁律（2026-08-18 民勤 CG 重大教训）
+
+**trace 日志里的 `baseline estimation failure` 是 burst 级中间诊断信息，不是整体失败！**
+SARscape 基线估算逐 burst 进行，ROI 裁剪数据（每 swath 少量 burst）边缘 burst 的几何
+计算常触发内部失败标记并打印 `VALID pair ... baseline estimation failure`——但 **pair 级
+基线估计仍继续并成功**（CG_report 里 NormalBaseline/TemporalBaseline/Doppler 都齐全）。
+民勤实测：trace 2926 对大量标 failure，最终 CG 仍成功（376 对 ACCEPT，77 景全 Valid）。
+
+**成败判据（唯一正确）**：
+1. **步骤完成 = auxiliary.sml 的步骤标记 = OK**（如 `<generate_connection_graph>OK</...>`）
+2. **配对数 = connection_graph/CG_report.txt 的 ACCEPT/有效对统计**
+3. trace 里的 failure/ERROR 关键字需要区分：`[CORE][!]`/`FATAL`/`call_exit_program`
+   才是致命错误；`baseline estimation failure` 是中间诊断，**不要中断任务**（CG 全程约
+   19 分钟，让它跑完）
+4. sar_modules.txt 空 ≠ IDL 没执行：printf 缓冲进程退出时可能未落盘，以 auxiliary.sml
+   最终标记为准
+
+**教训**：AI 曾把 trace 全标 failure 当整体失败，两次中途 taskkill（每次浪费 10-20 分钟），
+导致从未看到成功结果。**判断成败只认 auxiliary.sml 最终标记 + CG_report ACCEPT 数，勿信
+trace 中间日志**。
 
 ### ⚠️ 会话启动时必须检查 wake_events（异常/里程碑接手）
 
