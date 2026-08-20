@@ -346,7 +346,6 @@ reg add "HKCU\Software\Microsoft\Windows\CurrentVersion\Run" /v InSarGenieDLGuar
 def _completed(out):
     return os.path.exists(os.path.join(out, "complete.flag"))
 
-
 def main():
     if _completed(OUT):
         print("[DONE] 检测到 complete.flag（下载已全部完成），无需拉起")
@@ -426,6 +425,11 @@ PowerShell `(Get-Content -Raw) -replace "\n","\r\n"` 或确认编辑器保存为
 
 ### ⚠️ AI 操作纪律（2026-08-18 民勤多坑沉淀，重要）
 
+0. **长任务前检查 CPU 争抢（2026-08-19 民勤实测）**：SARscape 计算期间若有后台进程
+   抢 CPU（如小智桌面 XZSearch64 搜索索引、杀毒扫描、云盘同步），会显著拖慢进度
+   （民勤实测每对配准 30min→停掉 XZSearch64 后 17min，提速近 2 倍）。跑长任务前：
+   ① `Get-Process | Sort CPU -Desc` 查高 CPU 进程 ② 确认非必需服务（搜索索引/壁纸等）
+   可停 ③ 停掉后采样 main_sbas CPU 增量验证提速（10s 内 CPU 增量 > 耗时即多核算力）。
 1. **先查 SKILL.md，再动手**：本技能文档是唯一权威操作手册——用户教的流程
    （DEM 三步、GACOS 处理、连接图参数铁律、成败判据）都已沉淀在本文档。
    动手前先检索本文档对应章节，**不要自由发挥跳过文档记录的步骤**
