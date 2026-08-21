@@ -577,18 +577,35 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 
 > 💡 此机制的目的是：**先确认再执行**，避免跑完几小时发现参数不对重跑。
 
+### ⚠️ 配准速度铁律（2026-08-21 民勤/古浪实测，三实验对照）
+
+**干涉速度由"配准路径"决定，不是由面积/对数量决定**：
+
+| 实验 | 基线 | 研究区 | 配准路径 | 速率 |
+|------|------|--------|----------|------|
+| gulang2 | 45% 长基线 | 黄土高原（纹理足）| 稀疏 GCP | ~6 分钟/对 |
+| 民勤批处理 | 45% 长基线 | 沙漠（低相干）| **稠密 DEM**（~380x 计算量）| 21-24 分钟/对 |
+| 民勤 GUI | 2% 短基线 | 沙漠 | 稀疏 GCP | ~4.75 分钟/产物 |
+
+1. **路径选择机制**：配准先试稀疏 GCP（互相关匹配）。**GCP 匹配失败**（低相干区 + 长基线 → 频谱偏移大、相干差）就**自动降级稠密 DEM 位移配准**（逐点地形几何计算，民勤 trace 实测 574 点/对 vs gulang2 的 1.5 点/对，~383 倍）。trace 里大量 `REJECT`/`UnderThreshold` 就是降级信号。
+2. **因此 2-4% 短基线是速度关键**：短基线频谱偏移小，沙漠区也能 GCP 匹配 → 留在快速路径。这也再次印证空间基线铁律——**基线同时决定质量与速度**。
+3. **OpenCL 必须开**：SARscape OpenCL 来自 **Preferences**（默认 `NO PLATFORMS` = 无 GPU）。开启方法：ENVI → SARscape → Preferences → OpenCL 平台/设备（GUI 操作，一次性）。不开则滤波/相干/重采样纯 CPU（实测有 GPU 时快 ~4 倍）。批处理默认值文件 `SARscape_default_values_dataset_common.txt` 为 `NO PLATFORMS`，**不配置就没加速**。
+4. **whitening（GUI 默认）**：配准前频谱白化（FFT 域，~35 分钟/景），提高低相干区配准精度；批处理默认不做。沙漠区建议保留（配准更稳），代价是每景 +35 分钟。
+5. **速率判断方法**：只认 `interf_tiff/` 落地的"完成对"（用时间戳算），**勿用中间产物（sint/par/pwr_orb）数当完成对**——曾因此误判（GUI 85 分钟 20 个中间产物 ≠ 完成 16 对）。
+
 ## 实验批处理执行（AI 自动运行 bat）
 
 参数确认后，AI 按步骤执行 SARscape 批处理（`experiment/bat/`，路径已从 config.env 读取，零硬编码）：
 
 | 步骤 | bat | 触发对话 |
 |------|-----|---------|
-| 第 1 步 连接图 | `experiment/bat/01_connection_graph/run_cg_final.bat` | 「开始第 1 步」 |
-| 第 2 步 干涉图 | `experiment/bat/02_interferogram/run_interf.bat` | 「开始第 2 步」 |
+| 第 1 步 连接图 | `experiment/bat/01_connection_graph/run_cg_final.bat`（**已固化 2% 空间基线**，勿改）| 「开始第 1 步」 |
+| 第 2 步 干涉图 | `experiment/bat/02_interferogram/run_interf.bat`（**需先开 OpenCL Preferences**，见速度铁律）| 「开始第 2 步」 |
 | 第 3 步 反演1 | `experiment/bat/03_inversion/run_inv1.bat` | 「开始第 3 步」 |
 | 第 4 步 反演2 | `experiment/bat/03_inversion/run_inv2.bat` | 「开始第 4 步」 |
 | 第 5 步 地理编码 | `experiment/bat/04_geocode/run_geocode.bat` | 「开始第 5 步」 |
 | 第 0 步 SLC 导入 | `experiment/bat/00_import/run_import_slc.bat`（ImportSentinel1Format，支持 ROI 裁剪/极化可选，verify 模式校验）| 「导入数据」 |
+| DEM 预处理 | `experiment/bat/03_data_prep/run_dem.bat`（三步：merge_hgt_dem.py → ImportEnviOriginal → ToolsGeoid）+ `experiment/tools/merge_hgt_dem.py`（config.env 配 DEM_RAW/DEM_DAT/DEM_ENVI/DEM_FINAL）| 「处理 DEM」 |
 
 AI 执行要点：
 - 每个 bat 从 `config.env` 读路径（若未配置先提示 `copy config.example.env config.env`）
