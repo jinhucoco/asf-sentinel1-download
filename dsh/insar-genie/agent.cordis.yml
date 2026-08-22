@@ -122,6 +122,12 @@
 - id: tool-skill
   name: '@deepseek-ai/dsh-tool-skill'
 
+# ─── insar-genie dsh plugin (host tools + optional client UI) ───
+# The cordis plugin package provides insar_run / insar_status / insar_templates
+# host tools plus optional client UI (deferred).
+- id: insar-genie-dsh
+  name: '@dsh-custom/insar-genie-dsh'
+
 # ── goals ───────────────────────────────────────────────────────────────────
 
 # Only the model-facing tool. The goal SERVICE, its session driver, and the

@@ -4,6 +4,8 @@
 # 安装内容：
 #   SBAS-InSAR 全链路 agent preset（含 insar-genie 技能 + scripts + experiment）
 #   安装到 $env:USERPROFILE\.dsh\.agent-presets\insar-genie\
+#   可选：cordis 插件 @dsh-custom/insar-genie-dsh（host 工具 + UI）
+#      dsh plugin add @dsh-custom/insar-genie-dsh
 #
 # 用法：
 #   本地源码：   powershell -ExecutionPolicy Bypass -File install-dsh.ps1
