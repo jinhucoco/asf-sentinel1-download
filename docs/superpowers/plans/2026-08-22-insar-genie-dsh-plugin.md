@@ -843,9 +843,16 @@ git commit -m "feat(plugin): python spawn runner with output cap and timeout"
 
 ## 任务 7：host 工具注册 tools.ts + index.ts
 
+> **⚠️ API 修正（2026-08-22 执行中发现）**：本任务代码块已按真实 DSH API 重写，以任务简报（`.superpowers/sdd/task-7-brief.md`）为准：
+> 1. 工具注册用 `ctx.tools.register(defineTool({...}))`（`defineTool` 来自 `@deepseek-ai/dsh-tools`），`parameters` 为 JSON Schema 风格，`output` 需 `schema`+`render`，`execute(args, exec)` 返回 Promise——**不是** `ctx.get("tools").register(name, {schema, execute})`
+> 2. 设置注册用 `installSettingsSection(ctx, settingsNamespace("insarGenie"), schema, entry, hooks)` 5 参数，`ns` 必须是 `settingsNamespace()` 的返回值（Branded 类型）——**不是**传字符串 + 对象
+
 **文件：**
 - 创建：`dsh-plugin/src/host/tools.ts`
 - 修改：`dsh-plugin/src/index.ts`（创建）
+- 创建：`dsh-plugin/src/host/settings.ts`
+
+> 完整代码见任务简报 `.superpowers/sdd/task-7-brief.md`（已按真实 API 修正）。
 
 - [ ] **步骤 1：实现 tools.ts（三个工具 + 参数快照校验）**
 
