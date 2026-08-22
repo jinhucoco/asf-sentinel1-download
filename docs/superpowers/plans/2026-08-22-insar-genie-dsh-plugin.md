@@ -1026,7 +1026,9 @@ git commit -m "feat(plugin): register insar_run/insar_status/insar_templates too
 
 ---
 
-## 任务 8：client 侧组件（ParamConfirm + ProgressPanel）
+## 任务 8：client 侧组件（ParamConfirm + ProgressPanel）— ⏸️ 推迟
+
+> **⏸️ 推迟（2026-08-22 用户决策）**：真实 DSH client 插件需要完整 client 构建链——`dsh.client` 配置（inject 列表）、tsdown bundle（ModuleLoader 格式）、插槽注册（ctx.slots.register）、多个 client peer 依赖（dsh-client-runtime、dsh-client-ui-primitives、react 等）。当前 `dsh-plugin/` 无此基建，实现复杂度远超本计划假设。**决定：任务 8 推迟，不阻塞 host 侧（任务 9-10）**，client 层后续单独设计（可作为独立子项目）。host 侧 insar_run/insar_status/insar_templates 工具已能通过 AI 对话服务用户，UI 组件（ParamConfirm 防呆卡、ProgressPanel）作为增强后续补充。
 
 **文件：**
 - 创建：`dsh-plugin/src/client/index.ts`
