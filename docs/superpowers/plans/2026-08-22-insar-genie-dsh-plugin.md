@@ -142,7 +142,7 @@ export default defineConfig({
 
 ```ts
 /** 实验生命周期状态 */
-export type ExperimentStatus =
+export type ExperimentLifecycle =
   | "draft" | "queued" | "running" | "paused" | "failed" | "done";
 
 /** SBAS 五步（对应 auxiliary.sml 的 OK/NotOK 标记） */
@@ -169,7 +169,7 @@ export interface Experiment {
     dem: string;
   };
   params: ExperimentParams;        // 参数快照（确认卡确认后的最终值）
-  status: ExperimentStatus;
+  status: ExperimentLifecycle;
   startedAt?: string;              // ISO 时间
   error?: { code: string; detail: string; evidence: string };
 }
