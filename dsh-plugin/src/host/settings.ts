@@ -2,8 +2,9 @@ import { Context } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
 
-/** 设置命名空间：须用 settingsNamespace() 工厂创建（Branded 类型） */
-export const SETTINGS_NS = settingsNamespace("insarGenie");
+/** 设置命名空间：须用 settingsNamespace() 工厂创建（Branded 类型）；
+ *  dsh-settings 校验 /^[a-z][a-z0-9-]*$/，必须是小写 kebab-case（"insarGenie" 会抛 TypeError） */
+export const SETTINGS_NS = settingsNamespace("insar-genie");
 
 /** 设置项 schema */
 export const SettingsSchema = z.object({

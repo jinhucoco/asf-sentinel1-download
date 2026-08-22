@@ -12,18 +12,18 @@ SBAS-InSAR 全链路 DSH 插件：insar_run / insar_status / insar_templates 工
 ## 使用
 
 - 对话：「跑 SBAS，区域 xxx.shp，2020-2025，VV」
-- AI 识别地形 → 调用 `insar_templates` 取模板 → 生成参数表 → 用户确认 → `insar_run` 执行
+- AI 识别地形 → 调用 `insar_templates` 取模板 → 生成参数表 → 用户确认 → `insar_run` 执行下载（list 清单 CSV 或 aoi+start+end，同步 await，数小时级）
 - 实验运行中：`insar_status` 查询五步进度与剩余时间（AI 汇报）
 
 ## 工具
 
 | 工具 | 作用 |
 |---|---|
-| `insar_run` | 执行下载/批处理（参数来自确认；含基线防呆校验）|
+| `insar_run` | 执行 Sentinel-1 SLC 下载（`multi_download.py`；--list 清单 CSV 或 --aoi/--start/--end 搜索路径 + --pol/--out；cwd=scriptDir，不设超时）|
 | `insar_status` | 读取实验状态（解析 auxiliary.sml / step_performed.sml / guard 日志）|
 | `insar_templates` | 按地形返回参数模板（矿区/滑坡/城市/沙漠/黄土高原）|
 
-## 设置（settings → insarGenie）
+## 设置（settings → insar-genie）
 
 - earthdataUser / earthdataPassword：ASF 凭证
 - gacosEmail / gacosImapAuthCode：GACOS 收件邮箱

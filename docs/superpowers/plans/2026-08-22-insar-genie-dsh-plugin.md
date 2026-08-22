@@ -845,7 +845,7 @@ git commit -m "feat(plugin): python spawn runner with output cap and timeout"
 
 > **⚠️ API 修正（2026-08-22 执行中发现）**：本任务代码块已按真实 DSH API 重写，以任务简报（`.superpowers/sdd/task-7-brief.md`）为准：
 > 1. 工具注册用 `ctx.tools.register(defineTool({...}))`（`defineTool` 来自 `@deepseek-ai/dsh-tools`），`parameters` 为 JSON Schema 风格，`output` 需 `schema`+`render`，`execute(args, exec)` 返回 Promise——**不是** `ctx.get("tools").register(name, {schema, execute})`
-> 2. 设置注册用 `installSettingsSection(ctx, settingsNamespace("insarGenie"), schema, entry, hooks)` 5 参数，`ns` 必须是 `settingsNamespace()` 的返回值（Branded 类型）——**不是**传字符串 + 对象
+> 2. 设置注册用 `installSettingsSection(ctx, settingsNamespace("insar-genie"), schema, entry, hooks)` 5 参数，`ns` 必须是 `settingsNamespace()` 的返回值（Branded 类型）——**不是**传字符串 + 对象；命名空间必须匹配 `/^[a-z][a-z0-9-]*$/`（"insarGenie" 含大写会运行时抛 TypeError）
 
 **文件：**
 - 创建：`dsh-plugin/src/host/tools.ts`
@@ -868,9 +868,15 @@ import { runPython } from "./runner.js";
 import { getTemplate } from "./templates.js";
 import { SBAS_STEPS, type Experiment } from "../shared/types.js";
 
-/** insar_run 入参 schema：确认卡确认后的最终参数 */
+/** insar_run 入参：真实下载输入（对应 multi_download.py CLI；scriptDir 必填） */
 export const RunSchema = z.object({
-  experimentId: z.string(),
+  scriptDir: z.string(),
+  list: z.string().optional(),
+  aoi: z.string().optional(),
+  start: z.string().optional(),
+  end: z.string().optional(),
+  pol: z.string().optional(),
+  out: z.string().optional(),
   pythonBin: z.string().default("python"),
 });
 
@@ -897,18 +903,21 @@ export function registerTools(
   tools.register("insar_run", {
     schema: RunSchema,
     async execute(input: z.infer<typeof RunSchema>) {
-      const exp = deps.registry.get(input.experimentId);
-      if (!exp) throw new Error(`experiment not found: ${input.experimentId}`);
-      // 防呆：执行前再次校验基线
-      const gate = validateBaseline(exp.params.maxPercBaseline);
-      if (!gate.ok) throw new Error(gate.message);
-      deps.registry.update(input.experimentId, { status: "queued" });
-      // 异步后台执行：runner.runPython(下载/批处理 bat)
-      const result = await runPython(
-        input.pythonBin,
-        ["scripts/multi_download.py", "--experiment", exp.dir],
-        exp.dir,
-      );
+      // 真实 CLI：multi_download.py（脚本位于 scriptDir，cwd=scriptDir）
+      // 二选一：--list 清单驱动，或 --aoi/--start/--end 搜索驱动；--pol/--out 可选
+      const args = ["multi_download.py"];
+      if (input.list) {
+        args.push("--list", input.list);
+      } else {
+        if (!input.aoi || !input.start || !input.end) {
+          throw new Error("insar_run: provide either list (manifest CSV) or aoi + start + end");
+        }
+        args.push("--aoi", input.aoi, "--start", input.start, "--end", input.end);
+      }
+      if (input.pol) args.push("--pol", input.pol);
+      if (input.out) args.push("--out", input.out);
+      // 同步 await：数小时级下载，不设超时（runner.runPython timeoutMs 缺省 undefined）
+      const result = await runPython(input.pythonBin, args, input.scriptDir);
       if (result.exitCode !== 0) {
         deps.registry.update(input.experimentId, {
           status: "failed",
@@ -989,9 +998,9 @@ export function apply(ctx: Context) {
 ```ts
 import { Context } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
-import { installSettingsSection } from "@deepseek-ai/dsh-settings";
+import { installSettingsSection, settingsNamespace } from "@deepseek-ai/dsh-settings";
 
-export const SETTINGS_NS = "insarGenie";
+export const SETTINGS_NS = settingsNamespace("insar-genie");
 
 export function registerSettings(ctx: Context) {
   installSettingsSection(ctx, SETTINGS_NS, {
@@ -1223,7 +1232,7 @@ git commit -m "feat(plugin): client UI - ParamConfirm (2-4% baseline gate) + Pro
 
 插件运行时通过设置命名空间的 `skillDir` 解析脚本路径，不重复打包 Python 资产。
 
-配套数据路径（settings → insarGenie）：
+配套数据路径（settings → insar-genie）：
 - `poeorbDir`：精密轨道目录（默认 `<实验目录>/poeorb`，可覆盖为公共轨道库）
 - `gacosDir` / `demDir` / `slcDir`：其余配套数据目录
 ```
@@ -1286,7 +1295,7 @@ SBAS-InSAR 全链路 DSH 插件：insar_run / insar_status / insar_templates 工
 - AI 识别地形 → 推 ParamConfirm 卡片 → 用户确认 → insar_run 执行
 - 实验运行中：ProgressPanel 每 30s 刷新五步进度与剩余时间
 
-## 设置（settings → insarGenie）
+## 设置（settings → insar-genie）
 
 - earthdataUser / earthdataPassword：ASF 凭证
 - gacosEmail / gacosImapAuthCode：GACOS 收件邮箱

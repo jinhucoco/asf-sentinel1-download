@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { validateBaseline, getTemplate } from "./templates.js";
+import { getTemplate } from "./templates.js";
 import { createRegistry } from "./registry.js";
 import { computeStatus } from "./status.js";
 import { runPython } from "./runner.js";
@@ -25,33 +25,50 @@ export function registerTools(
 ) {
   ctx.tools.register(defineTool({
     name: "insar_run",
-    description: "Execute an insar-genie experiment step (download/batch) after param-confirm gate. Async: creates a background run and returns immediately.",
+    description: "Run the ASF Sentinel-1 SLC downloader (skill scripts/multi_download.py) with the given download inputs. Synchronous await: the download runs to completion — hours for large AOIs — so do not expect an immediate return. Provide either a manifest CSV (list) or an AOI + time range (aoi/start/end); pass pol/out to control polarization and destination.",
     parameters: {
-      experimentId: { type: "string", required: true, description: "Experiment id from the registry." },
+      scriptDir: { type: "string", required: true, description: "Directory containing the skill scripts (multi_download.py lives here), e.g. <repo>/skills/insar-genie/scripts. Used as the process cwd." },
+      list: { type: "string", description: "Manifest CSV path (columns: date,frame,orbit,satellite,file). List-driven path; takes precedence over aoi/start/end." },
+      aoi: { type: "string", description: "AOI shapefile/kml path. Search-driven path; requires start and end." },
+      start: { type: "string", description: "Start date YYYYMMDD (search-driven path)." },
+      end: { type: "string", description: "End date YYYYMMDD (search-driven path)." },
+      pol: { type: "string", description: "Polarization(s), comma-separated, e.g. 'VV+VH,VV'. Defaults to 'VV+VH,VV'." },
+      out: { type: "string", description: "Download output directory. Defaults to '<scriptDir>/sentinel1_data'." },
       pythonBin: { type: "string", description: "Python executable path. Defaults to 'python'." },
     },
     output: JSON_OUTPUT,
-    async execute(input: { experimentId: string; pythonBin?: string }) {
-      const exp = deps.registry.get(input.experimentId);
-      if (!exp) throw new Error(`experiment not found: ${input.experimentId}`);
-      // 防呆：执行前再次校验基线（2-4%，杜绝 45% 事故）
-      const gate = validateBaseline(exp.params.maxPercBaseline);
-      if (!gate.ok) throw new Error(gate.message);
-      deps.registry.update(input.experimentId, { status: "queued" });
+    async execute(input: {
+      scriptDir: string;
+      list?: string;
+      aoi?: string;
+      start?: string;
+      end?: string;
+      pol?: string;
+      out?: string;
+      pythonBin?: string;
+    }) {
+      const args = ["multi_download.py"];
+      if (input.list) {
+        // 清单驱动（与 multi_download.py 的 "list 优先于搜索路径" 语义一致）
+        args.push("--list", input.list);
+      } else {
+        if (!input.aoi || !input.start || !input.end) {
+          throw new Error("insar_run: provide either list (manifest CSV) or aoi + start + end (search-driven download)");
+        }
+        args.push("--aoi", input.aoi, "--start", input.start, "--end", input.end);
+      }
+      if (input.pol) args.push("--pol", input.pol);
+      if (input.out) args.push("--out", input.out);
+      // 同步 await：数小时级下载，不设超时（runPython timeoutMs 缺省为 undefined）
       const result = await runPython(
         input.pythonBin ?? "python",
-        ["scripts/multi_download.py", "--experiment", exp.dir],
-        exp.dir,
+        args,
+        input.scriptDir,
       );
       if (result.exitCode !== 0) {
-        deps.registry.update(input.experimentId, {
-          status: "failed",
-          error: { code: "run-failed", detail: result.stderr, evidence: "" },
-        });
         throw new Error(`insar_run failed: ${result.stderr}`);
       }
-      deps.registry.update(input.experimentId, { status: "running" });
-      return { ok: true, experimentId: input.experimentId };
+      return { ok: true, args, stdout: result.stdout };
     },
   }));
 
