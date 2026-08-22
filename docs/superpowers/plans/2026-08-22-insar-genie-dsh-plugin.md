@@ -88,11 +88,20 @@ dsh-plugin/                          # 新增：cordis 插件包根
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "^4.0.1",
+    "@types/node": "^22.0.0",
     "typescript": "^5.5.0",
     "vitest": "^2.0.0"
   },
   "license": "MIT"
 }
+```
+
+- [ ] **步骤 1b：创建 dsh-plugin/.gitignore（node_modules 和构建产物不入库）**
+
+```gitignore
+node_modules/
+lib/
+*.log
 ```
 
 - [ ] **步骤 2：创建 tsconfig.json**
