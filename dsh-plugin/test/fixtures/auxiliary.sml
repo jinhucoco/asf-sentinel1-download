@@ -1,0 +1,21 @@
+<HEADER_INFO>
+   <generate_connection_graph>OK</generate_connection_graph>
+   <coregistration>NotOK</coregistration>
+   <interf_stack>NotOK</interf_stack>
+   <interf_patterns_removal>NotOK</interf_patterns_removal>
+   <hc_unwrapping>NotOK</hc_unwrapping>
+   <hc_unwrapping_init3D>NotOK</hc_unwrapping_init3D>
+   <hc_interf_patterns_removal>NotOK</hc_interf_patterns_removal>
+   <unwrapping>NotOK</unwrapping>
+   <unwrapping_init3D>NotOK</unwrapping_init3D>
+   <initial_reflat>NotOK</initial_reflat>
+   <first_reflat>NotOK</first_reflat>
+   <first_inversion>NotOK</first_inversion>
+   <second_unwrapping>NotOK</second_unwrapping>
+   <second_unwrapping_init3D>NotOK</second_unwrapping_init3D>
+   <second_reflat>NotOK</second_reflat>
+   <second_inversion>NotOK</second_inversion>
+   <remove_atmosphere_and_fit_disp>NotOK</remove_atmosphere_and_fit_disp>
+   <geocod_reflat>NotOK</geocod_reflat>
+   <geocode_result>NotOK</geocode_result>
+</HEADER_INFO>
