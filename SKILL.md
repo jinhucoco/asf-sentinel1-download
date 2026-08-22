@@ -718,6 +718,19 @@ python scripts/verify_clone.py            # 34 项：仓库完整性/代码健�
 `main_sbas.exe`（实际 C++ 计算进程，内存密集峰值 7.3GB）。判断进程是否在跑**必须查 main_sbas**
 （wmic/tasklist 全查，勿只 grep envi_idl），文件持续写入是更可靠的存活信号。
 
+**参数查证方法（PARAMETERS_INFO_*.xml 是唯一权威）**：
+- 脚本/SetParam 写什么 ≠ 实际用什么：SARscape 每次运行会把**实际生效的完整参数**落盘到
+  `临时目录/work/PARAMETERS_INFO_<MODULE>_CMD_<时间戳>.xml`（如 `PARAMETERS_INFO_INSAR_STACK_SBAS_GENERATE_CONNECTION_GRAPH_CMD_*.xml`）。
+- 查"某次实验到底用了什么参数"（如空间基线）：读该 XML，`grep max_perc_baseline`——脚本没设就显示默认值。
+  例：run_cg 脚本未设基线参数 → XML 实测 `max_perc_baseline=45`（默认）→ 这正是一次次"跑出来是 45%"的真相；
+  加了 SetParam 后 XML 变 `max_perc_baseline=2` 才是真生效（民勤 8/21 验证）。
+- **SetParam 未生效的参数在 XML 里显示 `USER_PARAMETER_TO_FILL`**（占位符）→ 跑前检查 XML 立即发现静默失效，
+  无需等结果不对。
+- 验证顺序（排错/确认参数）：① SetParam 返回值（1=接受）→ ② VerifyParams() → ③ **读生成的
+  PARAMETERS_INFO XML 确认目标参数值**（三步全过才算设对）。
+- 参数来源可信度排序：`PARAMETERS_INFO_*.xml`（实际生效）> `Process.trace` 声明行 > `CG_report.txt`（间接反推）>
+  交接文档（人工记录）> 脚本文本（可能未生效/被默认覆盖）。
+
 **REBUILD 重跑注意**：重跑某步骤时 auxiliary.sml 仍保留旧 `OK` 标记 → 守护可能误报「全流程完成」
 且停止监控（进程崩溃不自动重启）。重跑期间需人工盯进程，或守护加「进程活跃则不报 DONE」保护
 （已修复于 sbas_guard.py）。
