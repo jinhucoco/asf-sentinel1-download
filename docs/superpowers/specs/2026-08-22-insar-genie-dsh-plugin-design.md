@@ -111,6 +111,13 @@
 
 ## 5. CLIENT 侧组件
 
+> **挂载位置决策（2026-08-22 晚，用户授权自主执行）**：经调研 DSH 真实插槽生态（`slots.inject` 全量清单），可用插槽为 `conversation.chat.turnTail` / `conversation.chat.node` / `conversation.input.dock/left/overlay` / `settings.section` / `settings.general.item` / `settings.plugin.item` / `shell.overlay`——**没有独立侧边栏固定面板插槽**（侧边栏由 dsh-better-sidebar 私有实现，不暴露通用插槽）。因此：
+> - **ProgressPanel → `conversation.chat.turnTail`**：对话消息尾部，**自带 30s 轮询 `insar_status`，不依赖 AI 主动汇报**——用户只要在看对话，进度实时可见
+> - **ParamConfirm → `conversation.chat.turnTail`**：AI 生成参数时渲染确认表单
+> - **SettingsCard + 实验总览 → `settings.section`**：设置页插件区（dshmarket 同款 Discover/Themes/Installed 模式），常驻可查历史
+>
+> **构建链（参考 dshmarket）**：`tsdown` 打包 client → `client/client.js`（ModuleLoader 格式，`window.__ModuleLoader__.load({id, factory})`）；新增 devDeps（tsdown/react/react-dom/@types/react/@testing-library/react/jsdom/dsh-client-runtime/dsh-client-ui-primitives/dsh-client-ui-slots/dsh-client-ui-settings-plugins/dsh-invariants）；`dsh.client` 配置 `{inject: [...], platform: "web"}`；package.json exports 加 `./client`。
+
 ### 5.1 参数确认卡片（ParamConfirm）
 
 - 触发：AI 执行 `insar_run` 前，先推确认卡，不直接执行
@@ -120,6 +127,7 @@
   - **防呆校验**：基线不在 2-4% 区间 → 红色警告 + 阻断确认
   - 数据目录确认：SLC / POEORB / GACOS / DEM 四条路径 + 修改入口
 - 交互：确认 / 修改后确认 / 取消
+- 挂载：`conversation.chat.turnTail`
 
 ### 5.2 进度面板（ProgressPanel）
 
@@ -129,16 +137,23 @@
   - 当前步细粒度进度（干涉图 = 已完成对/总对 + 每对耗时 → 剩余时间）
   - 数据盘占用
   - 异常区：停滞/失败定位 + 修复建议按钮
-- 刷新：轮询 `insar_status`（如 30s）
+- 刷新：**自带 30s 轮询 `insar_status`（不依赖 AI 汇报）**；实验选择：从注册表列出现有实验（下拉）
+- 挂载：`conversation.chat.turnTail`
 
 ### 5.3 与 host 通信
 
 - `inject` 依赖（`dsh-client-runtime`、`dsh-api-remotes` 等）+ API gateway 调 host 工具
-- 组件注册到 UI 插槽（侧边栏/消息流内嵌）
+- 组件注册到 UI 插槽（见上方挂载位置决策）
 
 ### 5.4 模板库 UI（轻量）
 
 - `insar_templates` 数据渲染为下拉/卡片：选地形 → 预览参数 → 一键填入确认卡
+
+### 5.5 SettingsCard + 实验总览
+
+- 设置页 `settings.section` 内：凭证（Earthdata/GACOS）、路径（ENVI/SARscape/workDir/**poeorbDir**）、实验列表/历史（从注册表读）
+- 参考 dshmarket 的 PluginCard/SettingsCard 模式
+
 
 ## 6. 数据流与交互时序
 

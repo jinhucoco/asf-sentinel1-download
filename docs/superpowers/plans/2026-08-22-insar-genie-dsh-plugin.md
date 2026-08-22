@@ -1,4 +1,4 @@
-# insar-genie DSH 插件实现计划
+﻿# insar-genie DSH 插件实现计划
 
 > **面向 AI 代理的工作者：** 必需子技能：使用 superpowers:subagent-driven-development（推荐）或 superpowers:executing-plans 逐任务实现此计划。步骤使用复选框（`- [ ]`）语法来跟踪进度。
 
@@ -1035,171 +1035,202 @@ git commit -m "feat(plugin): register insar_run/insar_status/insar_templates too
 
 ---
 
-## 任务 8：client 侧组件（ParamConfirm + ProgressPanel）— ⏸️ 推迟
+## 任务 8：client 侧组件（ParamConfirm + ProgressPanel + SettingsCard）— 🔄 重启
 
-> **⏸️ 推迟（2026-08-22 用户决策）**：真实 DSH client 插件需要完整 client 构建链——`dsh.client` 配置（inject 列表）、tsdown bundle（ModuleLoader 格式）、插槽注册（ctx.slots.register）、多个 client peer 依赖（dsh-client-runtime、dsh-client-ui-primitives、react 等）。当前 `dsh-plugin/` 无此基建，实现复杂度远超本计划假设。**决定：任务 8 推迟，不阻塞 host 侧（任务 9-10）**，client 层后续单独设计（可作为独立子项目）。host 侧 insar_run/insar_status/insar_templates 工具已能通过 AI 对话服务用户，UI 组件（ParamConfirm 防呆卡、ProgressPanel）作为增强后续补充。
+> **🔄 重启（2026-08-22 晚，用户授权自主执行）**：原任务 8 因 client 构建链复杂度推迟。现重启，按 dshmarket 模式建完整构建链。挂载位置决策（调研真实插槽生态后确认）：
+> - **ProgressPanel → `conversation.chat.turnTail`**：对话消息尾部，**自带 30s 轮询 `insar_status`，不依赖 AI 主动汇报**——用户只要在看对话，进度实时可见
+> - **ParamConfirm → `conversation.chat.turnTail`**：AI 生成参数时渲染确认表单
+> - **SettingsCard + 实验总览 → `settings.section`**：设置页插件区（dshmarket 同款）
+> - 构建链：`tsdown` 打包 → `client/client.js`（ModuleLoader 格式），新增 client devDeps，`dsh.client` 配置，exports 加 `./client`
+
+**前置：host 侧进度数据可靠性修复（必须先行，否则面板显示错误数据）**
+
+### 任务 8a：host 侧修复（guard 路径 / 注册表写入 / readFileSafe）
+
+**文件：**
+- 修改：`dsh-plugin/src/host/tools.ts`
+- 修改：`dsh-plugin/src/host/status.ts`
+- 修改：`dsh-plugin/src/host/index.ts`（或 apply 入口）
+- 测试：`dsh-plugin/test/status.test.ts`（扩展）
+
+- [ ] **步骤 1：修复 guard 日志路径**（tools.ts L87）
+
+现状 `join(exp.dir, "..", "asf_experiment", "sbas_guard.log")` 对真实布局（实验在 G:\, guard 日志在 workDir/asf_experiment）是错的。改为从设置 `workDir` 解析 + 探测候选：
+```ts
+function resolveGuardLog(exp: Experiment, workDir?: string): string {
+  // 候选 1：设置 workDir 下的 asf_experiment
+  if (workDir) {
+    const p = join(workDir, "asf_experiment", "sbas_guard.log");
+    if (existsSync(p)) return p;
+  }
+  // 候选 2：实验目录的父目录 asf_experiment
+  const p2 = join(exp.dir, "..", "asf_experiment", "sbas_guard.log");
+  if (existsSync(p2)) return p2;
+  // 候选 3：实验目录自身
+  const p3 = join(exp.dir, "asf_experiment", "sbas_guard.log");
+  return existsSync(p3) ? p3 : "";
+}
+```
+
+- [ ] **步骤 2：readFileSafe 缺文件报错而非静默降级**（tools.ts readFileSafe + status.ts）
+
+`computeStatus` 的 auxXml 为空时当前返回全零状态（误导"连接图 0%"）。改为：auxXml 为空时抛结构化错误（error 字段），面板显示"无法读取进度文件"而非 0%：
+```ts
+// status.ts computeStatus 开头
+if (!input.auxXml.trim()) {
+  return {
+    step: "generate_connection_graph" as SbasStep, stepIndex: 0, totalSteps: SBAS_STEPS.length,
+    donePairs: 0, totalPairs: 0, pairsPerMinute: 0, etaMinutes: 0, diskGb: 0,
+    progressLabel: "无法读取进度文件", isStalled: false,
+    error: { code: "no-auxiliary", detail: "auxiliary.sml 缺失或不可读", evidence: "" },
+  };
+}
+```
+
+- [ ] **步骤 3：补实验注册表写入入口**（注册表当前无写入路径 → ProgressPanel 无法列实验）
+
+在 tools.ts 加 `insar_register` 工具（或让 insar_run 自建记录）：参数 = name/terrain/dir/dataDirs/params → 调 registry.create，返回 experimentId。这样 ProgressPanel 的"实验选择"有数据源。
+
+- [ ] **步骤 4：TDD 验证**（扩展 status.test.ts）
+
+```ts
+it("auxXml 缺失时返回 error 而非全零", () => {
+  const status = computeStatus({ auxXml: "", stepPerformedXml: "", guardLog: "" });
+  expect(status.error?.code).toBe("no-auxiliary");
+  expect(status.progressLabel).toBe("无法读取进度文件");
+});
+```
+
+- [ ] **步骤 5：Commit**
+
+```bash
+git add dsh-plugin/src/host/ dsh-plugin/test/
+git commit -m "fix(plugin): reliable progress data - guard log from workDir, error on missing files, registry write entry"
+```
+
+### 任务 8b：client 构建链
+
+**文件：**
+- 创建：`dsh-plugin/tsdown.config.ts`
+- 创建：`dsh-plugin/tsconfig.client.json`
+- 创建：`dsh-plugin/scripts/normalize-client-banner.mjs`
+- 修改：`dsh-plugin/package.json`（devDeps + dsh.client + exports + build:client script）
+
+- [ ] **步骤 1：package.json 增 client 构建**
+
+```jsonc
+// devDependencies 新增（参考 dshmarket）：
+"tsdown": "^0.22.14",
+"react": "^18.3.1",
+"react-dom": "^18.3.1",
+"@types/react": "~18.3.1",
+"@types/react-dom": "~18.3.1",
+"@testing-library/react": "^16.3.2",
+"jsdom": "^29.1.1",
+"@deepseek-ai/dsh-client-runtime": "^0.1.1-rc.2",
+"@deepseek-ai/dsh-client-ui-primitives": "^0.1.1-rc.2",
+"@deepseek-ai/dsh-client-ui-slots": "^0.1.1-rc.2",
+"@deepseek-ai/dsh-client-ui-settings-plugins": "^0.1.1-rc.2",
+"@deepseek-ai/dsh-invariants": "^0.1.1-rc.2",
+
+// dsh.client 配置：
+"dsh": {
+  "bundle": { "patch": "./cordis.patch.yml" },
+  "client": {
+    "inject": ["@deepseek-ai/dsh-client-runtime", "@deepseek-ai/dsh-client-locale", "@deepseek-ai/dsh-client-ui-settings-plugins"],
+    "platform": "web"
+  }
+},
+
+// exports 加 ./client：
+"./client": "./client/client.js",
+
+// scripts 加：
+"build:client": "tsdown && node scripts/normalize-client-banner.mjs",
+"build": "tsc -p tsconfig.json && npm run build:client"
+```
+
+- [ ] **步骤 2：tsdown.config.ts**
+
+```ts
+import { defineConfig } from "tsdown";
+
+export default defineConfig({
+  entry: [{ name: "client", input: "src/client/index.ts" }],
+  outDir: "client",
+  format: "cjs",
+  platform: "browser",
+  external: [/^@deepseek-ai\//, /^react$/],
+  banner: (chunk) => `window.__ModuleLoader__.load({ id: ${JSON.stringify("insar-genie-dsh")}, factory: (require) => {`,
+  footer: () => `return module.exports; } });`,
+  minify: false,
+  sourcemap: true,
+});
+```
+
+- [ ] **步骤 3：tsconfig.client.json**
+
+```jsonc
+{
+  "compilerOptions": {
+    "target": "ES2022", "module": "ESNext", "moduleResolution": "Bundler",
+    "jsx": "react-jsx", "strict": true, "skipLibCheck": true,
+    "types": ["react", "react-dom"], "noEmit": true
+  },
+  "include": ["src/client"]
+}
+```
+
+- [ ] **步骤 4：npm install + 构建验证**
+
+```bash
+cd dsh-plugin && npm install --include=dev
+npx tsc -p tsconfig.client.json --noEmit  # client 类型检查
+npm run build:client  # 产出 client/client.js（ModuleLoader 格式）
+```
+
+- [ ] **步骤 5：Commit**
+
+```bash
+git add dsh-plugin/tsdown.config.ts dsh-plugin/tsconfig.client.json dsh-plugin/scripts/ dsh-plugin/package.json
+git commit -m "build(plugin): client build chain (tsdown ModuleLoader bundle + client deps + exports)"
+```
+
+### 任务 8c：client 组件（ParamConfirm + ProgressPanel + SettingsCard）
 
 **文件：**
 - 创建：`dsh-plugin/src/client/index.ts`
 - 创建：`dsh-plugin/src/client/ParamConfirm.tsx`
 - 创建：`dsh-plugin/src/client/ProgressPanel.tsx`
+- 创建：`dsh-plugin/src/client/SettingsCard.tsx`
+- 测试：`dsh-plugin/test/client.test.tsx`（@testing-library/react）
 
-- [ ] **步骤 1：实现 client/index.ts（client 入口）**
+- [ ] **步骤 1：client/index.ts（入口 + 插槽注册）**
 
 ```ts
-import { defineComponent } from "@deepseek-ai/dsh-client-runtime";
-import { ParamConfirm } from "./ParamConfirm.js";
-import { ProgressPanel } from "./ProgressPanel.js";
-
-export default defineComponent({
-  slots: {
-    "insar-param-confirm": ParamConfirm,
-    "insar-progress-panel": ProgressPanel,
-  },
-});
+import { apply as applySlots } from "@deepseek-ai/dsh-client-runtime";
+// client 入口：注册插槽到 turnTail 和 settings.section
+// 注意：真实 DSH client 入口用 window.__ModuleLoader__.load 包装（tsdown banner 已处理），
+// 内部通过 ctx.slots.inject 注册组件。结构参考 dshmarket client.js。
 ```
 
-- [ ] **步骤 2：实现 ParamConfirm.tsx（参数确认卡片）**
+（说明：client 入口的具体 API 形态（defineComponent vs slots.inject）以实现时对照 `dsh-client-runtime` 和 dshmarket 实际产物为准——实现者需读 `C:\Users\86155\.dsh\profiles\web\node_modules\dshmarket\client\client.js` 和 `dsh-client-ui-slots` 的类型定义确定。）
 
-```tsx
-import { useState } from "react";
-import type { ExperimentParams, TerrainType } from "../shared/types.js";
-import { validateBaseline } from "../host/templates.js";
+- [ ] **步骤 2：ParamConfirm.tsx**（复用原设计：地形联动 + 2-4% 防呆阻断，挂 turnTail）
 
-const TERRAIN_LABELS: Record<TerrainType, string> = {
-  mining: "矿区", landslide: "滑坡", urban: "城市", desert: "沙漠", loess: "黄土高原",
-};
+- [ ] **步骤 3：ProgressPanel.tsx**（自带 30s 轮询 + 实验下拉，挂 turnTail；数据缺失时显示 error 而非 0%）
 
-/**
- * 参数确认卡片：地形联动参数 + 2-4% 基线防呆。
- * 调用方（AI）在 insar_run 前渲染此组件，确认后才执行。
- */
-export function ParamConfirm(props: {
-  terrain: TerrainType;
-  params: ExperimentParams;
-  onChange: (p: ExperimentParams) => void;
-  onConfirm: () => void;
-  onCancel: () => void;
-}) {
-  const [params, setParams] = useState(props.params);
-  const gate = validateBaseline(params.maxPercBaseline);
+- [ ] **步骤 4：SettingsCard.tsx**（设置表单：凭证/路径/POEORB + 实验列表，挂 settings.section）
 
-  const update = (patch: Partial<ExperimentParams>) => {
-    const next = { ...params, ...patch };
-    setParams(next);
-    props.onChange(next);
-  };
-
-  return (
-    <div style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16, maxWidth: 480 }}>
-      <h3>实验参数确认</h3>
-      <p>地形：{TERRAIN_LABELS[props.terrain]}</p>
-
-      <label>
-        空间基线（% of critical）：
-        <input
-          type="number"
-          value={params.maxPercBaseline}
-          onChange={(e) => update({ maxPercBaseline: Number(e.target.value) })}
-          style={gate.ok ? {} : { border: "2px solid red" }}
-        />
-      </label>
-      {!gate.ok && (
-        <p style={{ color: "red" }}>⚠️ {gate.message}</p>
-      )}
-
-      <label>多视：{params.rgLooks}:{params.azLooks}</label>
-      <label>时间基线：{params.maxTimeBaselineDays} 天</label>
-      <label>滤波：{params.filtering} {params.goldsteinWinSize}</label>
-      <label>解缠：{params.unwrap} 阈值 {params.unwrapCohThreshold}</label>
-      <label>GACOS 校正：{params.useGacos ? "开" : "关"}</label>
-
-      <div style={{ marginTop: 12 }}>
-        <button onClick={props.onConfirm} disabled={!gate.ok}>确认执行</button>
-        <button onClick={props.onCancel}>取消</button>
-      </div>
-    </div>
-  );
-}
-```
-
-- [ ] **步骤 3：实现 ProgressPanel.tsx（进度面板）**
-
-```tsx
-import { useEffect, useState } from "react";
-import type { ExperimentStatus } from "../shared/types.js";
-
-const STEP_LABELS = ["连接图", "干涉", "解缠", "反演1", "反演2", "地理编码"];
-
-/** 进度面板：五步进度条 + 剩余时间 + 异常 */
-export function ProgressPanel(props: {
-  experimentId: string;
-  fetchStatus: (id: string) => Promise<ExperimentStatus>;
-}) {
-  const [status, setStatus] = useState<ExperimentStatus | null>(null);
-
-  useEffect(() => {
-    const tick = async () => {
-      try {
-        setStatus(await props.fetchStatus(props.experimentId));
-      } catch {
-        /* 网络/服务暂不可用，保持上次状态 */
-      }
-    };
-    tick();
-    const timer = setInterval(tick, 30_000); // 30s 轮询
-    return () => clearInterval(timer);
-  }, [props.experimentId]);
-
-  if (!status) return <div>加载中…</div>;
-
-  return (
-    <div style={{ border: "1px solid #ccc", borderRadius: 8, padding: 16, maxWidth: 640 }}>
-      <h3>SBAS 实验进度</h3>
-      <div style={{ display: "flex", gap: 4 }}>
-        {STEP_LABELS.map((label, i) => (
-          <div
-            key={label}
-            style={{
-              flex: 1,
-              padding: 6,
-              textAlign: "center",
-              background: i < status.stepIndex ? "#4caf50" : i === status.stepIndex ? "#ff9800" : "#eee",
-              borderRadius: 4,
-            }}
-          >
-            {label}
-          </div>
-        ))}
-      </div>
-      <p>{status.progressLabel}</p>
-      <p>已完成 {status.donePairs}/{status.totalPairs} 对 · 速率 {status.pairsPerMinute.toFixed(2)} 对/分 · 预计剩余 {Math.round(status.etaMinutes / 60)} 小时</p>
-      <p>数据盘占用：{status.diskGb.toFixed(1)} GB</p>
-      {status.error && (
-        <div style={{ border: "1px solid red", padding: 8, marginTop: 8 }}>
-          <strong>异常：</strong>{status.error.detail}
-          <br />
-          <small>证据：{status.error.evidence}</small>
-        </div>
-      )}
-    </div>
-  );
-}
-```
-
-- [ ] **步骤 4：构建验证**
-
-运行：`cd dsh-plugin && npx tsc -p tsconfig.json --noEmit`
-预期：无类型错误（React JSX 类型需 `npm i -D react @types/react`；若 client 类型来自 `@deepseek-ai/dsh-client-runtime` 则按 peer 安装）。
-
-- [ ] **步骤 5：Commit**
+- [ ] **步骤 5：client 测试 + 构建 + Commit**
 
 ```bash
-git add dsh-plugin/src/client/
-git commit -m "feat(plugin): client UI - ParamConfirm (2-4% baseline gate) + ProgressPanel (5-step + ETA)"
+cd dsh-plugin && npx vitest run  # 全过（含 client 测试）
+npm run build  # host + client 全构建
+git add dsh-plugin/src/client/ dsh-plugin/test/client.test.tsx
+git commit -m "feat(plugin): client UI - ParamConfirm/ProgressPanel/SettingsCard (turnTail + settings.section)"
 ```
 
----
 
 ## 任务 9：插件挂载到 agent preset + 安装脚本
 
