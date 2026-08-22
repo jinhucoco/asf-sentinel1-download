@@ -796,12 +796,12 @@ export function runPython(
     const child = spawn(pythonBin, args, { cwd, stdio: ["ignore", "pipe", "pipe"] });
     let stdout = "";
     let stderr = "";
-    const append = (buf: Buffer, target: { v: string }, key: "v") => {
-      target.v += buf.toString("utf8");
-      if (target.v.length > OUTPUT_CAP) target.v = target.v.slice(-OUTPUT_CAP);
+    const capped = (s: string, chunk: Buffer) => {
+      const next = s + chunk.toString("utf8");
+      return next.length > OUTPUT_CAP ? next.slice(-OUTPUT_CAP) : next;
     };
-    child.stdout?.on("data", (b: Buffer) => { stdout += b.toString("utf8"); if (stdout.length > OUTPUT_CAP) stdout = stdout.slice(-OUTPUT_CAP); });
-    child.stderr?.on("data", (b: Buffer) => { stderr += b.toString("utf8"); if (stderr.length > OUTPUT_CAP) stderr = stderr.slice(-OUTPUT_CAP); });
+    child.stdout?.on("data", (b: Buffer) => { stdout = capped(stdout, b); });
+    child.stderr?.on("data", (b: Buffer) => { stderr = capped(stderr, b); });
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
       resolve({ exitCode: null, stdout, stderr: stderr + "\n[timeout]" });
@@ -842,6 +842,8 @@ git commit -m "feat(plugin): python spawn runner with output cap and timeout"
 
 ```ts
 import { Context, Service } from "@deepseek-ai/cordis";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { z } from "@deepseek-ai/schemastery";
 import { validateBaseline } from "./templates.js";
 import { createRegistry } from "./registry.js";
