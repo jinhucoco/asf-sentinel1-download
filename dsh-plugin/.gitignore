@@ -1,3 +1,4 @@
 node_modules/
 lib/
 *.log
+!dsh-plugin/test/fixtures/*.log
