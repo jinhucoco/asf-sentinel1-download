@@ -1,10 +1,11 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { getTemplate } from "./templates.js";
 import { createRegistry } from "./registry.js";
 import { computeStatus } from "./status.js";
 import { runPython } from "./runner.js";
+import type { Experiment, ExperimentParams, TerrainType } from "../shared/types.js";
 
 /** 通用输出：宽松 object schema + JSON 文本渲染（同 dsh-tool-goal 的 GOAL_OUTPUT） */
 const JSON_OUTPUT = {
@@ -84,7 +85,8 @@ export function registerTools(
       if (!exp) throw new Error(`experiment not found: ${input.experimentId}`);
       const auxXml = readFileSafe(join(exp.dir, "auxiliary.sml"), "");
       const stepXml = readFileSafe(join(exp.dir, "work", "work_step_performed.sml"), "");
-      const guardLog = readFileSafe(join(exp.dir, "..", "asf_experiment", "sbas_guard.log"), "");
+      // guard 日志：探测候选路径（真实布局 guard 日志在 workDir/asf_experiment，不在实验目录附近）
+      const guardLog = readFileSafe(resolveGuardLog(exp), "");
       // 注：status.ts 的参数名是 stepPerformedXml（简报原文 stepXml 与现有代码不一致，已适配）
       return Promise.resolve(computeStatus({ auxXml, stepPerformedXml: stepXml, guardLog }) as never);
     },
@@ -107,6 +109,67 @@ export function registerTools(
       });
     },
   }));
+
+  ctx.tools.register(defineTool({
+    name: "insar_register",
+    description: "Register a new experiment in the registry (ProgressPanel's experiment list / insar_status need an entry). Creates the record and returns its id.",
+    parameters: {
+      name: { type: "string", required: true, description: "Experiment display name, e.g. 'minqin1'." },
+      terrain: { type: "string", required: true, description: "Terrain type: mining|landslide|urban|desert|loess." },
+      dir: { type: "string", required: true, description: "Experiment root directory (e.g. G:\\minqin1_SBAS_processing)." },
+      slcDir: { type: "string", description: "SLC data directory." },
+      poeorbDir: { type: "string", description: "Precise orbit (POEORB) directory." },
+      gacosDir: { type: "string", description: "GACOS atmospheric delay directory." },
+      demDir: { type: "string", description: "DEM directory." },
+      params: { type: "object", additionalProperties: true, description: "Experiment parameter snapshot (ExperimentParams shape)." },
+    },
+    output: JSON_OUTPUT,
+    execute(input: {
+      name: string;
+      terrain: string;
+      dir: string;
+      slcDir?: string;
+      poeorbDir?: string;
+      gacosDir?: string;
+      demDir?: string;
+      params?: Partial<ExperimentParams>;
+    }) {
+      const id = deps.registry.create({
+        name: input.name,
+        terrain: input.terrain as TerrainType,
+        dir: input.dir,
+        dataDirs: {
+          slc: input.slcDir ?? "",
+          poeorb: input.poeorbDir ?? "",
+          gacos: input.gacosDir ?? "",
+          dem: input.demDir ?? "",
+        },
+        params: input.params as ExperimentParams,
+        status: "draft",
+      });
+      return Promise.resolve({ ok: true, experimentId: id });
+    },
+  }));
+
+  ctx.tools.register(defineTool({
+    name: "insar_list",
+    description: "List registered experiments (id/name/terrain/status). ProgressPanel's experiment selector uses this.",
+    parameters: {
+      _unused: { type: "string", description: "Unused; kept to satisfy schema." },
+    },
+    output: JSON_OUTPUT,
+    execute() {
+      return Promise.resolve({
+        experiments: deps.registry.list().map((e) => ({
+          id: e.id,
+          name: e.name,
+          terrain: e.terrain,
+          status: e.status,
+          dir: e.dir,
+        })),
+      } as never);
+    },
+  }));
 }
 
 function readFileSafe(path: string, fallback: string): string {
@@ -115,4 +178,24 @@ function readFileSafe(path: string, fallback: string): string {
   } catch {
     return fallback;
   }
+}
+
+/**
+ * 定位 guard 日志（sbas_guard.log）。真实布局中日志在 workDir/asf_experiment，
+ * 实验目录可能与之分离（如实验在 G:\，日志在 D:\work\data\asf_experiment），
+ * 故探测多个候选路径，返回第一个存在的；都不存在返回空串（调用方 readFileSafe 兜底）。
+ */
+function resolveGuardLog(exp: Experiment): string {
+  // 候选 1：实验目录自身下的 asf_experiment
+  const self = join(exp.dir, "asf_experiment", "sbas_guard.log");
+  if (existsSync(self)) return self;
+  // 候选 2：实验目录父级下的 asf_experiment
+  const parent = join(exp.dir, "..", "asf_experiment", "sbas_guard.log");
+  if (existsSync(parent)) return parent;
+  // 候选 3：DSH_HOME 下的 asf_experiment（sbas_guard.py 用 WORK_DIR，此处尽力探测）
+  if (process.env.DSH_HOME) {
+    const home = join(process.env.DSH_HOME, "asf_experiment", "sbas_guard.log");
+    if (existsSync(home)) return home;
+  }
+  return "";
 }

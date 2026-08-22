@@ -52,4 +52,11 @@ describe("computeStatus", () => {
     expect(status.totalPairs).toBe(376);
     expect(status.progressLabel).toContain("干涉");
   });
+
+  it("auxXml 缺失时返回 error 而非误导的全零状态", () => {
+    const status = computeStatus({ auxXml: "", stepPerformedXml: "", guardLog: "" });
+    expect(status.error?.code).toBe("no-auxiliary");
+    expect(status.progressLabel).toBe("无法读取进度文件");
+    expect(status.donePairs).toBe(0);
+  });
 });

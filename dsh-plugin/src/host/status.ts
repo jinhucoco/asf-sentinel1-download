@@ -42,6 +42,27 @@ export function computeStatus(input: {
   stepPerformedXml: string;
   guardLog: string;
 }): ExperimentStatus {
+  // 数据源缺失：返回结构化 error 而非误导的全零状态（AI/面板能区分"未开始"与"读不到文件"）
+  if (!input.auxXml.trim()) {
+    return {
+      step: "generate_connection_graph" as SbasStep,
+      stepIndex: 0,
+      totalSteps: SBAS_STEPS.length,
+      donePairs: 0,
+      totalPairs: 0,
+      pairsPerMinute: 0,
+      etaMinutes: 0,
+      diskGb: 0,
+      progressLabel: "无法读取进度文件",
+      isStalled: false,
+      error: {
+        code: "no-auxiliary",
+        detail: "auxiliary.sml 缺失或不可读，无法确定实验进度",
+        evidence: "",
+      },
+    };
+  }
+
   const aux = parseAuxiliarySteps(input.auxXml);
   const { done, total } = parsePairProgress(input.stepPerformedXml);
   const guard = parseGuardLog(input.guardLog);
