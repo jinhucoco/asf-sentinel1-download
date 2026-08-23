@@ -26,7 +26,7 @@ import type { ParamSnapshot, ProgressSnapshot, TerrainType } from "./shared.js";
  */
 export const name = "insar-genie-dsh";
 
-export const inject = ["slots"];
+export const inject = ["slots", "conversationEvents"];
 
 /** host 侧注入的运行时桥（可选；无则走会话快照提取） */
 declare global {
