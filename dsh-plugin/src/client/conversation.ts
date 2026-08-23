@@ -177,6 +177,7 @@ export function selectInsarTurn(owner: { turn: TurnLocation }): InsarTurnData | 
 /** 会话快照里的 tool-result 节点（宽松形状，避免 client 依赖 host 类型） */
 interface ToolResultLike {
   kind?: string;
+  seq?: number;
   call?: { name?: string; argsRaw?: string } | null;
   content?: readonly unknown[];
 }
@@ -192,11 +193,13 @@ export function latestInsarStatus(
   nodes: readonly ToolResultLike[] | undefined,
 ): { status: ProgressSnapshot; experimentId?: string } | null {
   if (!nodes || nodes.length === 0) return null;
+  // nodes 按 seq 升序（legacy 快照排序保证），取最后一个命中的 insar_status；
+  // 同时用 seq 显式比较兜底，防止调用方传无序数组时仍取到最新。
   let latest: ToolResultLike | null = null;
   for (const node of nodes) {
     if (node?.kind !== "tool-result") continue;
     if (node.call?.name !== "insar_status") continue;
-    if (!latest) latest = node;
+    if (!latest || (node.seq ?? 0) >= (latest.seq ?? 0)) latest = node;
   }
   if (!latest) return null;
   const json = parseToolResultJson(latest.content);

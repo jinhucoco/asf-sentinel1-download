@@ -43,20 +43,23 @@ declare global {
 }
 
 /** turnTail 组件（chain 注册，session 作用域）：
- * - matched：selectInsarTurn 的返回（该 turn 有 insar 工具活动才认领）
- * - useSession：框架注入的会话快照选择器——从快照提取最新 insar_status 结果，
- *   实时反映 host 读取的真实进度（AI 每次调用 insar_status 面板自动更新）
+ * - matched：selectInsarTurn 的返回（该 turn 有 insar 工具活动才认领）——**本 turn 数据优先**
+ * - useSession：框架注入的会话快照选择器——仅用于对"本 turn 已有 insar_status 活动"的
+ *   实验做实时刷新（AI 在同一实验上再次调用 insar_status 时面板自动更新）。
+ *   不做跨 turn 泄漏：其他 turn 的 insar 活动由它们自己的 turnTail 渲染。
  */
 export function InsarTurnTail(props: {
   matched: InsarTurnData;
-  useSession?: (selector: (s: unknown) => unknown) => unknown;
+  useSession: (selector: (s: unknown) => unknown) => unknown;
 }): ReturnType<typeof createElement> | null {
-  const snapshot = (props.useSession?.((s: unknown) => s) ?? undefined) as
-    | { nodes?: readonly { kind?: string; call?: { name?: string; argsRaw?: string } | null; content?: readonly unknown[] }[] }
+  // session 作用域插槽恒注入 useSession（SessionStandardProps），直接调用（规则-of-hooks）
+  const snapshot = props.useSession((s: unknown) => s) as
+    | { nodes?: readonly { kind?: string; seq?: number; call?: { name?: string; argsRaw?: string } | null; content?: readonly unknown[] }[] }
     | undefined;
   const latest = latestInsarStatus(snapshot?.nodes);
 
-  // 1) 参数确认卡：insar_templates 结果（agent 查模板后向用户确认参数）
+  // 1) 参数确认卡：insar_templates 结果（agent 查模板后向用户确认参数）。
+  //    优先于进度面板：同一 turn 既查模板又查状态时，先确认参数再展示进度。
   if (props.matched?.paramConfirm) {
     return createElement(ParamConfirm, {
       terrain: props.matched.paramConfirm.terrain as TerrainType,
@@ -66,16 +69,18 @@ export function InsarTurnTail(props: {
     });
   }
 
-  // 2) 进度面板：优先最新会话快照的 insar_status 结果，其次 matched/注入
-  const status = latest?.status ?? props.matched?.status;
-  const experimentId = latest?.experimentId ?? props.matched?.registered?.experimentId;
-
-  if (status) {
+  // 2) 进度面板：仅当**本 turn** 有 insar_status 活动时渲染（matched.status 是本 turn 的
+  //    最后结果）。快照 latest 只作为同一实验的实时刷新值——通过 snapshot prop 传入，
+  //    快照更新会重渲染并更新面板（initial 只挂载生效，不能承担实时刷新）。
+  //    无 matched.status 时不渲染进度面板，避免历史 turn 的 insar_status 泄漏压制
+  //    本 turn 的 experiments/registered 分支。
+  if (props.matched?.status) {
     return createElement(ProgressPanel, {
-      experimentId,
+      experimentId: latest?.experimentId,
       experimentLabel: undefined,
       fetchStatus: window.insarGenieBridge?.fetchStatus,
-      initial: status,
+      initial: props.matched.status,
+      snapshot: latest?.status,
     });
   }
   if (props.matched?.experiments && props.matched.experiments.length > 0) {
@@ -86,7 +91,7 @@ export function InsarTurnTail(props: {
       },
     });
   }
-  if (props.matched?.registered) {
+  if (props.matched?.registered && props.matched.registered.ok) {
     return createElement(
       "div",
       {
@@ -142,7 +147,7 @@ export function apply(ctx: any): void {
         select: selectInsarTurn,
         registrant: "insar-genie-dsh",
       },
-      InsarTurnTail as never,
+      InsarTurnTail,
     );
     return () => {
       if (typeof off === "function") off();

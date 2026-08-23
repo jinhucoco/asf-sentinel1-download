@@ -507,7 +507,7 @@ function latestInsarStatus(nodes) {
 	for (const node of nodes) {
 		if (node?.kind !== "tool-result") continue;
 		if (node.call?.name !== "insar_status") continue;
-		if (!latest) latest = node;
+		if (!latest || (node.seq ?? 0) >= (latest.seq ?? 0)) latest = node;
 	}
 	if (!latest) return null;
 	const json = parseToolResultJson(latest.content);
@@ -559,12 +559,13 @@ const inject = [
 	"@deepseek-ai/dsh-client-ui-settings-plugins"
 ];
 /** turnTail 组件（chain 注册，session 作用域）：
-* - matched：selectInsarTurn 的返回（该 turn 有 insar 工具活动才认领）
-* - useSession：框架注入的会话快照选择器——从快照提取最新 insar_status 结果，
-*   实时反映 host 读取的真实进度（AI 每次调用 insar_status 面板自动更新）
+* - matched：selectInsarTurn 的返回（该 turn 有 insar 工具活动才认领）——**本 turn 数据优先**
+* - useSession：框架注入的会话快照选择器——仅用于对"本 turn 已有 insar_status 活动"的
+*   实验做实时刷新（AI 在同一实验上再次调用 insar_status 时面板自动更新）。
+*   不做跨 turn 泄漏：其他 turn 的 insar 活动由它们自己的 turnTail 渲染。
 */
 function InsarTurnTail(props) {
-	const snapshot = props.useSession?.((s) => s) ?? void 0;
+	const snapshot = props.useSession((s) => s);
 	const latest = latestInsarStatus(snapshot?.nodes);
 	if (props.matched?.paramConfirm) return (0, react.createElement)(ParamConfirm, {
 		terrain: props.matched.paramConfirm.terrain,
@@ -572,13 +573,12 @@ function InsarTurnTail(props) {
 		onConfirm: () => {},
 		onCancel: () => {}
 	});
-	const status = latest?.status ?? props.matched?.status;
-	const experimentId = latest?.experimentId ?? props.matched?.registered?.experimentId;
-	if (status) return (0, react.createElement)(ProgressPanel, {
-		experimentId,
+	if (props.matched?.status) return (0, react.createElement)(ProgressPanel, {
+		experimentId: latest?.experimentId,
 		experimentLabel: void 0,
 		fetchStatus: window.insarGenieBridge?.fetchStatus,
-		initial: status
+		initial: props.matched.status,
+		snapshot: latest?.status
 	});
 	if (props.matched?.experiments && props.matched.experiments.length > 0) return (0, react.createElement)(SettingsCard, {
 		experiments: props.matched.experiments,
@@ -586,7 +586,7 @@ function InsarTurnTail(props) {
 			console.info("[insar-genie] settings save requested", s);
 		}
 	});
-	if (props.matched?.registered) return (0, react.createElement)("div", { style: {
+	if (props.matched?.registered && props.matched.registered.ok) return (0, react.createElement)("div", { style: {
 		border: "1px solid #ccc",
 		borderRadius: 8,
 		padding: 12,

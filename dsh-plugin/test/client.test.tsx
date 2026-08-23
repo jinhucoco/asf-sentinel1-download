@@ -77,8 +77,11 @@ describe("ProgressPanel", () => {
 });
 
 describe("InsarTurnTail（host→client 接线）", () => {
+  /** 无会话快照的 useSession stub */
+  const noSnapshot = () => undefined;
+
   it("matched.status 渲染进度面板", () => {
-    render(createElement(InsarTurnTail, { matched: { status: PROGRESS } }));
+    render(createElement(InsarTurnTail, { matched: { status: PROGRESS }, useSession: noSnapshot }));
     expect(screen.getByText("干涉图生成 51%")).toBeTruthy();
   });
 
@@ -87,6 +90,7 @@ describe("InsarTurnTail（host→client 接线）", () => {
       nodes: [
         {
           kind: "tool-result",
+          seq: 200,
           call: { name: "insar_status", argsRaw: JSON.stringify({ experimentId: "e1" }) },
           content: [
             {
@@ -98,24 +102,102 @@ describe("InsarTurnTail（host→client 接线）", () => {
       ],
     };
     const useSession = (sel: (s: unknown) => unknown) => sel(snapshot);
+    render(createElement(InsarTurnTail, { matched: { status: PROGRESS }, useSession }));
+    expect(screen.getByText("解缠 88%")).toBeTruthy();
+  });
+
+  it("快照更新后面板内容跟随（snapshot prop 实时通道，非 initial 一次性）", () => {
+    let snapshot: unknown = {
+      nodes: [
+        {
+          kind: "tool-result",
+          seq: 100,
+          call: { name: "insar_status", argsRaw: "{}" },
+          content: [
+            { type: "tool-result", content: [{ type: "text", text: JSON.stringify({ ...PROGRESS, progressLabel: "连接图 5%" }) }] },
+          ],
+        },
+      ],
+    };
+    const useSession = (sel: (s: unknown) => unknown) => sel(snapshot);
+    const { rerender } = render(
+      createElement(InsarTurnTail, { matched: { status: PROGRESS }, useSession }),
+    );
+    expect(screen.getByText("连接图 5%")).toBeTruthy();
+    // 模拟 AI 再次调用 insar_status：快照更新 → 组件重渲染 → 面板显示新进度
+    snapshot = {
+      nodes: [
+        {
+          kind: "tool-result",
+          seq: 100,
+          call: { name: "insar_status", argsRaw: "{}" },
+          content: [
+            { type: "tool-result", content: [{ type: "text", text: JSON.stringify({ ...PROGRESS, progressLabel: "连接图 5%" }) }] },
+          ],
+        },
+        {
+          kind: "tool-result",
+          seq: 200,
+          call: { name: "insar_status", argsRaw: "{}" },
+          content: [
+            { type: "tool-result", content: [{ type: "text", text: JSON.stringify({ ...PROGRESS, progressLabel: "干涉图生成 51%" }) }] },
+          ],
+        },
+      ],
+    };
+    rerender(createElement(InsarTurnTail, { matched: { status: PROGRESS }, useSession }));
+    expect(screen.getByText("干涉图生成 51%")).toBeTruthy();
+    expect(screen.queryByText("连接图 5%")).toBeNull();
+  });
+
+  it("本 turn 无 insar_status 时不被历史快照泄漏压制（experiments 分支可达）", () => {
+    // 会话历史里曾有 insar_status，但本 turn 的 matched 只有 insar_list 结果
+    const snapshot = {
+      nodes: [
+        {
+          kind: "tool-result",
+          seq: 50,
+          call: { name: "insar_status", argsRaw: "{}" },
+          content: [
+            { type: "tool-result", content: [{ type: "text", text: JSON.stringify(PROGRESS) }] },
+          ],
+        },
+      ],
+    };
+    const useSession = (sel: (s: unknown) => unknown) => sel(snapshot);
     render(createElement(InsarTurnTail, {
-      matched: { status: PROGRESS },
+      matched: { experiments: [{ id: "e1", name: "minqin", terrain: "desert", status: "running" }] },
       useSession,
     }));
-    expect(screen.getByText("解缠 88%")).toBeTruthy();
+    // 渲染实验列表而非被历史进度压制
+    expect(screen.getByText("insar-genie 设置")).toBeTruthy();
+    expect(screen.getByText(/minqin/)).toBeTruthy();
+    expect(screen.queryByText(/干涉图生成/)).toBeNull();
   });
 
   it("matched.experiments 渲染实验列表", () => {
     render(createElement(InsarTurnTail, {
       matched: { experiments: [{ id: "e1", name: "minqin", terrain: "desert", status: "running" }] },
+      useSession: noSnapshot,
     }));
     expect(screen.getByText("insar-genie 设置")).toBeTruthy();
     expect(screen.getByText(/minqin/)).toBeTruthy();
   });
 
   it("matched.registered 渲染注册成功提示", () => {
-    render(createElement(InsarTurnTail, { matched: { registered: { ok: true, experimentId: "e9" } } }));
+    render(createElement(InsarTurnTail, {
+      matched: { registered: { ok: true, experimentId: "e9" } },
+      useSession: noSnapshot,
+    }));
     expect(screen.getByText(/实验已注册：e9/)).toBeTruthy();
+  });
+
+  it("registered.ok=false 不渲染成功提示", () => {
+    const { container } = render(createElement(InsarTurnTail, {
+      matched: { registered: { ok: false, experimentId: "e9" } },
+      useSession: noSnapshot,
+    }));
+    expect(container.firstChild).toBeNull();
   });
 
   it("matched.paramConfirm 渲染参数确认卡", () => {
@@ -130,12 +212,13 @@ describe("InsarTurnTail（host→client 接线）", () => {
           },
         },
       },
+      useSession: noSnapshot,
     }));
     expect(screen.getByText("确认执行")).toBeTruthy();
   });
 
   it("无数据时渲染 null", () => {
-    const { container } = render(createElement(InsarTurnTail, { matched: {} }));
+    const { container } = render(createElement(InsarTurnTail, { matched: {}, useSession: noSnapshot }));
     expect(container.firstChild).toBeNull();
   });
 });

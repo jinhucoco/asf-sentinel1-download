@@ -259,6 +259,48 @@ describe("latestInsarStatus", () => {
     expect(r).toEqual({ status: STATUS, experimentId: "e1" });
   });
 
+  it("多个 insar_status 时取最新（seq 升序，取最后一个）", () => {
+    const older = { ...STATUS, donePairs: 10, progressLabel: "连接图 5%" };
+    const newer = { ...STATUS, donePairs: 190, progressLabel: "干涉图生成 51%" };
+    const nodes = [
+      {
+        kind: "tool-result",
+        seq: 100,
+        call: { name: "insar_status", argsRaw: JSON.stringify({ experimentId: "e1" }) },
+        content: [{ type: "tool-result", content: [{ type: "text", text: JSON.stringify(older) }] }],
+      },
+      {
+        kind: "tool-result",
+        seq: 200,
+        call: { name: "insar_status", argsRaw: JSON.stringify({ experimentId: "e1" }) },
+        content: [{ type: "tool-result", content: [{ type: "text", text: JSON.stringify(newer) }] }],
+      },
+    ];
+    const r = latestInsarStatus(nodes as any);
+    expect(r?.status).toEqual(newer);
+  });
+
+  it("多个 insar_status 时取最新（seq 无序也能取到 seq 最大的）", () => {
+    const older = { ...STATUS, donePairs: 10, progressLabel: "连接图 5%" };
+    const newer = { ...STATUS, donePairs: 190, progressLabel: "干涉图生成 51%" };
+    const nodes = [
+      {
+        kind: "tool-result",
+        seq: 200,
+        call: { name: "insar_status", argsRaw: "{}" },
+        content: [{ type: "tool-result", content: [{ type: "text", text: JSON.stringify(newer) }] }],
+      },
+      {
+        kind: "tool-result",
+        seq: 100,
+        call: { name: "insar_status", argsRaw: "{}" },
+        content: [{ type: "tool-result", content: [{ type: "text", text: JSON.stringify(older) }] }],
+      },
+    ];
+    const r = latestInsarStatus(nodes as any);
+    expect(r?.status).toEqual(newer);
+  });
+
   it("无 insar_status 结果时返回 null", () => {
     expect(latestInsarStatus([])).toBeNull();
     expect(latestInsarStatus(undefined)).toBeNull();
