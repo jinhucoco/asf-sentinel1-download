@@ -10,6 +10,10 @@ export { getTemplate, validateBaseline } from "./host/templates.js";
 
 export const name = "insar-genie-dsh";
 
+/** 声明本插件注入的服务：registerTools 用 ctx.tools，registerSettings 用 ctx.settings。
+ *  缺省该数组时 Cordis 判定 `cannot get property "tools" without inject`，必须显式声明。 */
+export const inject = ["tools", "settings"];
+
 /** 实验注册表存储目录（可通过设置覆盖） */
 export const REGISTRY_DIR = () =>
   process.env.DSH_HOME
