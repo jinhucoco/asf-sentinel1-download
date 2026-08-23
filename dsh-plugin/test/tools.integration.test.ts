@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -129,6 +129,56 @@ describe("insar_settings → 返回 resolve 后的设置值（含路径探测结
     expect(out.earthdataUser).toBe("demo@earthdata");
     expect(out.enviIdl).toMatch(/envi_idl\.exe$/);
     expect(out.sarscapeLib).toMatch(/sarscape$/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});
+
+describe("insar_experiment → step→bat 映射 + 默认 experiment 目录定位", () => {
+  function registerExperimentTool(dir: string): Tool {
+    const registry = createRegistry(join(dir, "registry"));
+    const registered: Tool[] = [];
+    const ctx: any = { tools: { register: (t: Tool) => registered.push(t) } };
+    registerTools(ctx, { registry });
+    const t = registered.find((x) => x.name === "insar_experiment");
+    if (!t) throw new Error("insar_experiment not registered");
+    return t;
+  }
+
+  it("step 键映射到正确的 bat（经错误消息中的路径验证）", async () => {
+    // 指向一个不含 bat 的临时目录，但注册实验目录存在；execute 应抛 no batch 且路径含 stepToBat 结果
+    const dir = mkdtempSync(join(tmpdir(), "insar-exp-"));
+    const registry = createRegistry(join(dir, "registry"));
+    const expDir = join(dir, "exp");
+    mkdirSync(expDir, { recursive: true });
+    const id = registry.create({
+      name: "test", terrain: "desert" as never, dir: expDir,
+      dataDirs: { slc: "", poeorb: "", gacos: "", dem: "" },
+      params: {} as never, status: "draft",
+    });
+    process.env.INSAR_GENIE_EXPERIMENT = join(dir, "no-bat-here");
+    const registered: Tool[] = [];
+    const ctx: any = { tools: { register: (t: Tool) => registered.push(t) } };
+    registerTools(ctx, { registry });
+    const t = registered.find((x) => x.name === "insar_experiment")!;
+    // interf → 02_interferogram/run_interf.bat
+    await expect(t.execute({ experimentId: id, step: "interf" })).rejects.toThrow(
+      /02_interferogram.*run_interf\.bat|run_interf\.bat/,
+    );
+    delete process.env.INSAR_GENIE_EXPERIMENT;
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("未知 step 抛错（不静默）", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "insar-exp-"));
+    const registry = createRegistry(join(dir, "registry"));
+    const id = registry.create({ name: "t", terrain: "desert" as never, dir: dir, dataDirs: { slc: "", poeorb: "", gacos: "", dem: "" }, params: {} as never, status: "draft" });
+    process.env.INSAR_GENIE_EXPERIMENT = dir;
+    const registered: Tool[] = [];
+    const ctx: any = { tools: { register: (t: Tool) => registered.push(t) } };
+    registerTools(ctx, { registry });
+    const t = registered.find((x) => x.name === "insar_experiment")!;
+    await expect(t.execute({ experimentId: id, step: "bogus" })).rejects.toThrow(/unknown step/);
+    delete process.env.INSAR_GENIE_EXPERIMENT;
     rmSync(dir, { recursive: true, force: true });
   });
 });

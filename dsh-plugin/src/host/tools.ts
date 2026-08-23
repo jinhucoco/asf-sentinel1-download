@@ -1,10 +1,12 @@
 import { existsSync, readFileSync } from "node:fs";
+import { spawn } from "node:child_process";
 import { join } from "node:path";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import { getTemplate, validateBaseline } from "./templates.js";
 import { createRegistry } from "./registry.js";
 import { computeStatus } from "./status.js";
 import { runPython } from "./runner.js";
+import { resolveScriptsDir, resolveExperimentDir, hasBundledScripts } from "./paths.js";
 import type { Experiment, ExperimentParams, TerrainType } from "../shared/types.js";
 
 /** settings 的值对象形状（与 SettingsSchema resolve 后的字段对齐，避免 schemastery 携带类型） */
@@ -41,9 +43,9 @@ export function registerTools(
 ) {
   ctx.tools.register(defineTool({
     name: "insar_run",
-    description: "Run the ASF Sentinel-1 SLC downloader (skill scripts/multi_download.py) with the given download inputs. Synchronous await: the download runs to completion — hours for large AOIs — so do not expect an immediate return. Provide either a manifest CSV (list) or an AOI + time range (aoi/start/end); pass pol/out to control polarization and destination.",
+    description: "Run the ASF Sentinel-1 SLC downloader (bundled scripts/multi_download.py) with the given download inputs. Synchronous await: the download runs to completion — hours for large AOIs — so do not expect an immediate return. Provide either a manifest CSV (list) or an AOI + time range (aoi/start/end); pass pol/out to control polarization and destination. scriptDir is optional: defaults to the plugin's bundled scripts directory (auto-installed).",
     parameters: {
-      scriptDir: { type: "string", required: true, description: "Directory containing the skill scripts (multi_download.py lives here), e.g. <repo>/skills/insar-genie/scripts. Used as the process cwd." },
+      scriptDir: { type: "string", description: "Optional. Directory containing multi_download.py. Defaults to the plugin's bundled scripts dir (installed with the plugin). Override with INSAR_GENIE_SCRIPTS env or this arg." },
       list: { type: "string", description: "Manifest CSV path (columns: date,frame,orbit,satellite,file). List-driven path; takes precedence over aoi/start/end." },
       aoi: { type: "string", description: "AOI shapefile/kml path. Search-driven path; requires start and end." },
       start: { type: "string", description: "Start date YYYYMMDD (search-driven path)." },
@@ -54,7 +56,7 @@ export function registerTools(
     },
     output: JSON_OUTPUT,
     async execute(input: {
-      scriptDir: string;
+      scriptDir?: string;
       list?: string;
       aoi?: string;
       start?: string;
@@ -63,6 +65,15 @@ export function registerTools(
       out?: string;
       pythonBin?: string;
     }) {
+      // 脚本目录：显式传值 > 环境变量 > 插件内置 assets/scripts（开箱即用）。
+      // 注意：显式/环境变量 override 直接采用（即使当前不存在也作为 cwd 传给 runner——
+      // 下载脚本路径由用户负责；仅当完全未提供且内置缺失时才报错）。
+      const scriptDir = resolveScriptsDir(input.scriptDir);
+      if (!input.scriptDir && !process.env.INSAR_GENIE_SCRIPTS && !hasBundledScripts()) {
+        throw new Error(
+          "insar_run: multi_download.py not found. Pass scriptDir or set INSAR_GENIE_SCRIPTS.",
+        );
+      }
       const args = ["multi_download.py"];
       if (input.list) {
         // 清单驱动（与 multi_download.py 的 "list 优先于搜索路径" 语义一致）
@@ -79,12 +90,12 @@ export function registerTools(
       const result = await runPython(
         input.pythonBin ?? "python",
         args,
-        input.scriptDir,
+        scriptDir,
       );
       if (result.exitCode !== 0) {
         throw new Error(`insar_run failed: ${result.stderr}`);
       }
-      return { ok: true, args, stdout: result.stdout };
+      return { ok: true, args, scriptDir, stdout: result.stdout };
     },
   }));
 
@@ -194,6 +205,38 @@ export function registerTools(
   }));
 
   ctx.tools.register(defineTool({
+    name: "insar_experiment",
+    description: "Run one SBAS processing step (SARscape batch) for an experiment by step key. The batch script lives in the plugin's bundled experiment/bat/<step>/ directory (auto-installed); the working dir is the experiment's own directory. Steps: import_slc / cg / interf / dem / gacos_bulk / gacos_import / inv1 / inv2 / geocode.",
+    parameters: {
+      experimentId: { type: "string", required: true, description: "Experiment id from the registry (its dir is the working directory)." },
+      step: { type: "string", required: true, description: "Step key. One of: import_slc, cg, interf, dem, gacos_bulk, gacos_import, inv1, inv2, geocode." },
+      experimentDir: { type: "string", description: "Optional override. Defaults to the experiment's registered dir. Override with INSAR_GENIE_EXPERIMENT env or this arg." },
+      timeoutMs: { type: "number", description: "Optional timeout in ms for the batch run; defaults to no timeout (long SARscape steps)." },
+    },
+    output: JSON_OUTPUT,
+    execute(input: {
+      experimentId: string;
+      step: string;
+      experimentDir?: string;
+      timeoutMs?: number;
+    }) {
+      const exp = deps.registry.get(input.experimentId);
+      if (!exp) throw new Error(`experiment not found: ${input.experimentId}`);
+      const experimentRoot = resolveExperimentDir(input.experimentDir);
+      const batName = stepToBat(input.step);
+      const batPath = join(experimentRoot, "bat", batName);
+      if (!existsSync(batPath)) {
+        throw new Error(`insar_experiment: no batch for step '${input.step}' (looked at ${batPath})`);
+      }
+      return runBatch(batPath, exp.dir, input.timeoutMs).then((r) => {
+        if (r.exitCode !== 0) {
+          throw new Error(`insar_experiment failed (${input.step}, exit ${r.exitCode}): ${r.stderr}`);
+        }
+        return { ok: true, step: input.step, bat: batName, experimentDir: exp.dir, stdout: r.stdout };
+      });
+    },
+  }));
+  ctx.tools.register(defineTool({
     name: "insar_settings",
     description: "Read the resolved insar-genie settings (credentials/paths after startup path probing). Returns the effective values; ENVI IDL + SARscape paths are auto-detected at plugin startup unless manually overridden.",
     parameters: {
@@ -214,6 +257,46 @@ export function registerTools(
       } as never);
     },
   }));
+}
+
+/** step 键 → bat 文件名（对应插件内置 experiment/bat/<子目录>/<bat>） */
+function stepToBat(step: string): string {
+  const map: Record<string, string> = {
+    import_slc: join("00_import", "run_import_slc.bat"),
+    cg: join("01_connection_graph", "run_cg_final.bat"),
+    interf: join("02_interferogram", "run_interf.bat"),
+    dem: join("03_data_prep", "run_dem.bat"),
+    gacos_bulk: join("03_data_prep", "run_gacos_bulk.bat"),
+    gacos_import: join("03_data_prep", "run_gacos_import.bat"),
+    inv1: join("03_inversion", "run_inv1.bat"),
+    inv2: join("03_inversion", "run_inv2.bat"),
+    geocode: join("04_geocode", "run_geocode.bat"),
+  };
+  const hit = map[step];
+  if (!hit) throw new Error(`unknown step '${step}' (valid: ${Object.keys(map).join(", ")})`);
+  return hit;
+}
+
+/** 执行 Windows batch（cmd /c），捕获输出（SARscape 步骤可能是长任务） */
+function runBatch(
+  batPath: string,
+  cwd: string,
+  timeoutMs?: number,
+): Promise<{ exitCode: number | null; stdout: string; stderr: string }> {
+  return new Promise((resolve) => {
+    const child = spawn("cmd", ["/c", batPath], { cwd, stdio: ["ignore", "pipe", "pipe"] });
+    let stdout = "";
+    let stderr = "";
+    const cap = 64 * 1024;
+    const push = (s: string, b: Buffer) => (s + b.toString("utf8")).slice(-cap);
+    child.stdout?.on("data", (b: Buffer) => { stdout = push(stdout, b); });
+    child.stderr?.on("data", (b: Buffer) => { stderr = push(stderr, b); });
+    const timer = timeoutMs !== undefined && timeoutMs > 0
+      ? setTimeout(() => { child.kill("SIGTERM"); }, timeoutMs)
+      : undefined;
+    child.on("error", (e) => { if (timer) clearTimeout(timer); resolve({ exitCode: null, stdout, stderr: `${stderr}\n${String(e)}` }); });
+    child.on("close", (code) => { if (timer) clearTimeout(timer); resolve({ exitCode: code, stdout, stderr }); });
+  });
 }
 
 function readFileSafe(path: string, fallback: string): string {

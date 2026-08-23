@@ -1,0 +1,10 @@
+asf_search>=6.0,<13
+pyshp>=2.3,<4
+shapely>=2.0,<3
+defusedxml>=0.7
+matplotlib>=3.5
+# 配套数据下载（可选）：
+# POEORB: 无需额外依赖（标准库）
+# GACOS: playwright（pip install playwright && playwright install chromium）
+# DEM: earthaccess（NASADEM 官方源）
+earthaccess>=0.11
