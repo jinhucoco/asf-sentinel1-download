@@ -145,6 +145,12 @@
 - `inject` 依赖（`dsh-client-runtime`、`dsh-api-remotes` 等）+ API gateway 调 host 工具
 - 组件注册到 UI 插槽（见上方挂载位置决策）
 
+> **host→client 数据接线（2026-08-23 实现，提交 a5d08a5）**：调研确认 DSH **无同步 host 工具调用通道**（早期设计中的 `window.insarGenieBridge` 桥不可行——host 运行在 Node 端，无法写浏览器 window）。真实原生通道是**会话事件流**：host 工具结果（`insar_status`/`insar_list`/`insar_register`/`insar_templates`）作为 `tool/result` 事件已流入 client 的 `ConversationSnapshot`。实现（与官方 `dsh-client-ui-deliverables` 同构）：
+> - `src/client/conversation.ts` 注册 `conversationEvents` Definition（`insarGenieDefinition`）：`match`（turn/start→start，insar 工具 tool/call→update，tool/result+`isAppendSurfaceEvent`→update）→ `start`/`update` 累积 `{status, experiments, registered, paramConfirm}` → `buildLocationData` 在 turn scope 发布为 `ConversationTurnDataMap["insar-genie"]`
+> - `conversation.chat.turnTail` 改为 **chain 注册**（`select: selectInsarTurn`，仅当该 turn 有 insar 工具结果时认领，否则 null 放行其他贡献者）——修复早期 single 注册缺 `select` 在真实 shell 抛错的问题
+> - 组件经框架注入的 `useSession` 从会话快照提取最新 `insar_status` 结果实时渲染（AI 每次调用自动更新，无需 30s 轮询；`window.insarGenieBridge` 仅保留为可选注入位）
+> - `settings.section` 为 list+root scope（无 useSession），SettingsCard 保持注入式占位
+
 ### 5.4 模板库 UI（轻量）
 
 - `insar_templates` 数据渲染为下拉/卡片：选地形 → 预览参数 → 一键填入确认卡
