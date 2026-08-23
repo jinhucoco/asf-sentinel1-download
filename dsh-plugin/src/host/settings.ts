@@ -11,13 +11,14 @@ export const SettingsSchema = z.object({
   earthdataUser: z.string().default(""),
   earthdataPassword: z.string().default(""),
   gacosEmail: z.string().default(""),
+  /** GACOS 邮箱授权码 —— 命名用"邮箱授权码"而非"IMAP 授权码"（普通用户不懂 IMAP 术语；
+   *  当前 gacos_fetch.py 只实现 IMAP 收取，改称邮箱授权码后未来扩展 POP3 也复用此字段） */
   gacosImapAuthCode: z.string().default(""),
   enviIdl: z.string().default("C:\\Program Files\\Harris\\ENVI56\\IDL88\\bin\\bin.x86_64\\envi_idl.exe"),
   sarscapeLib: z.string().default("C:\\Program Files\\SARMAP SA\\SARscape"),
   workDir: z.string().default("G:\\"),
   /** 精密轨道目录：默认 <实验目录>/poeorb，可覆盖为公共轨道库 */
   poeorbDir: z.string().default(""),
-  registryDir: z.string().default(""),
 });
 export type Settings = ReturnType<typeof SettingsSchema>;
 

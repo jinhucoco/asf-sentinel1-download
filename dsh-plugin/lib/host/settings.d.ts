@@ -8,24 +8,26 @@ export declare const SettingsSchema: z<Schemastery.ObjectS<{
     earthdataUser: z<string, string>;
     earthdataPassword: z<string, string>;
     gacosEmail: z<string, string>;
+    /** GACOS 邮箱授权码 —— 命名用"邮箱授权码"而非"IMAP 授权码"（普通用户不懂 IMAP 术语；
+     *  当前 gacos_fetch.py 只实现 IMAP 收取，改称邮箱授权码后未来扩展 POP3 也复用此字段） */
     gacosImapAuthCode: z<string, string>;
     enviIdl: z<string, string>;
     sarscapeLib: z<string, string>;
     workDir: z<string, string>;
     /** 精密轨道目录：默认 <实验目录>/poeorb，可覆盖为公共轨道库 */
     poeorbDir: z<string, string>;
-    registryDir: z<string, string>;
 }>, Schemastery.ObjectT<{
     earthdataUser: z<string, string>;
     earthdataPassword: z<string, string>;
     gacosEmail: z<string, string>;
+    /** GACOS 邮箱授权码 —— 命名用"邮箱授权码"而非"IMAP 授权码"（普通用户不懂 IMAP 术语；
+     *  当前 gacos_fetch.py 只实现 IMAP 收取，改称邮箱授权码后未来扩展 POP3 也复用此字段） */
     gacosImapAuthCode: z<string, string>;
     enviIdl: z<string, string>;
     sarscapeLib: z<string, string>;
     workDir: z<string, string>;
     /** 精密轨道目录：默认 <实验目录>/poeorb，可覆盖为公共轨道库 */
     poeorbDir: z<string, string>;
-    registryDir: z<string, string>;
 }>>;
 export type Settings = ReturnType<typeof SettingsSchema>;
 /**

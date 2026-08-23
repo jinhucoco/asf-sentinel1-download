@@ -9,6 +9,7 @@ import { createElement } from "react";
 import { ProgressPanel } from "../src/client/ProgressPanel.js";
 import { ParamConfirm } from "../src/client/ParamConfirm.js";
 import { InsarTurnTail } from "../src/client/index.js";
+import { SettingsCard } from "../src/client/SettingsCard.js";
 import { validateBaseline, type ParamSnapshot, type ProgressSnapshot } from "../src/client/shared.js";
 
 // vitest 无自动 cleanup，每个测试后卸载 DOM，避免多元素查询歧义
@@ -220,6 +221,19 @@ describe("InsarTurnTail（host→client 接线）", () => {
   it("无数据时渲染 null", () => {
     const { container } = render(createElement(InsarTurnTail, { matched: {}, useSession: noSnapshot }));
     expect(container.firstChild).toBeNull();
+  });
+});
+
+describe("SettingsCard（设置表单字段）", () => {
+  it("GACOS 授权码显示为'邮箱授权码'而非'IMAP 授权码'（普通用户可读）", () => {
+    render(createElement(SettingsCard, {}));
+    expect(screen.getByText("GACOS 邮箱授权码")).toBeTruthy();
+    expect(screen.queryByText(/IMAP 授权码/)).toBeNull();
+  });
+
+  it("不显示死字段'注册表目录'（registry 目录由 host 硬编码，用户无需配置）", () => {
+    render(createElement(SettingsCard, {}));
+    expect(screen.queryByText("注册表目录")).toBeNull();
   });
 });
 

@@ -9,7 +9,6 @@ export interface SettingsShape {
     sarscapeLib: string;
     workDir: string;
     poeorbDir: string;
-    registryDir: string;
 }
 /**
  * 设置卡片：凭证/路径/POEORB 表单 + 实验列表。

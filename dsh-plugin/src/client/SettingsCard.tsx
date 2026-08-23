@@ -11,19 +11,17 @@ export interface SettingsShape {
   sarscapeLib: string;
   workDir: string;
   poeorbDir: string;
-  registryDir: string;
 }
 
 const FIELD_LABELS: Record<keyof SettingsShape, string> = {
   earthdataUser: "ASF 账号",
   earthdataPassword: "ASF 密码",
   gacosEmail: "GACOS 邮箱",
-  gacosImapAuthCode: "GACOS IMAP 授权码",
+  gacosImapAuthCode: "GACOS 邮箱授权码",
   enviIdl: "ENVI IDL 路径",
   sarscapeLib: "SARscape 路径",
   workDir: "工作目录",
   poeorbDir: "POEORB 目录",
-  registryDir: "注册表目录",
 };
 
 /**
@@ -45,7 +43,6 @@ export function SettingsCard(props: {
     sarscapeLib: "",
     workDir: "G:\\",
     poeorbDir: "",
-    registryDir: "",
     ...(props.settings ?? {}),
   });
 

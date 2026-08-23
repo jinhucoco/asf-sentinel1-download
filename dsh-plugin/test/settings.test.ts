@@ -14,4 +14,8 @@ describe("settings namespace", () => {
     expect(s.poeorbDir).toBe("");
     expect(typeof s.sarscapeLib).toBe("string");
   });
+
+  it("注册表目录为死字段，settings schema 不应暴露（registry 目录由 index.ts 硬编码 DSH_HOME/insar-genie）", () => {
+    expect(SettingsSchema({})).not.toHaveProperty("registryDir");
+  });
 });

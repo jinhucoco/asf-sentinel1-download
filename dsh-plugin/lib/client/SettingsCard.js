@@ -5,12 +5,11 @@ const FIELD_LABELS = {
     earthdataUser: "ASF 账号",
     earthdataPassword: "ASF 密码",
     gacosEmail: "GACOS 邮箱",
-    gacosImapAuthCode: "GACOS IMAP 授权码",
+    gacosImapAuthCode: "GACOS 邮箱授权码",
     enviIdl: "ENVI IDL 路径",
     sarscapeLib: "SARscape 路径",
     workDir: "工作目录",
     poeorbDir: "POEORB 目录",
-    registryDir: "注册表目录",
 };
 /**
  * 设置卡片：凭证/路径/POEORB 表单 + 实验列表。
@@ -27,7 +26,6 @@ export function SettingsCard(props) {
         sarscapeLib: "",
         workDir: "G:\\",
         poeorbDir: "",
-        registryDir: "",
         ...(props.settings ?? {}),
     });
     const update = (key, value) => {
