@@ -1,8 +1,0 @@
-node_modules/
-*.log
-!dsh-plugin/test/fixtures/*.log
-# pnpm-lock.yaml 为本地开发/安装残留（插件依赖走 npm 的 package-lock.json），不入库避免仓库膨胀
-pnpm-lock.yaml
-# lib/ 为构建产物，但本包作为源码包随仓库发布（main 指向 lib/index.js），
-# 入库以便 clone 后开箱即用（无需再 npm run build）。仅排除 sourcemap。
-lib/**/*.map

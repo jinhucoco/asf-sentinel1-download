@@ -4,7 +4,9 @@
 在对话里说出需求，AI 自动从 ASF 下载 Sentinel-1 数据、获取配套数据（DEM/GACOS/POEORB）、
 基于 ENVI 和 SARscape 完成 SBAS-InSAR 全流程，并有守护进程全程自动监控汇报。
 
-> 仓库结构：`SKILL.md`（AI 技能定义）+ `scripts/`（下载/配套工具）+ `experiment/`（SARscape 批处理 + 守护）+ `dsh/`（DSH 社区插件）+ 环境自检 + 验证脚本。
+> 本仓库是**技能**仓库（多 Agent 普适）：`SKILL.md`（AI 技能定义）+ `scripts/`（下载/配套工具）+ `experiment/`（SARscape 批处理 + 守护）+ `install.sh`（多 Agent 自动安装）+ `tests/`（CI 验证）。
+>
+> 🔌 **DSH 插件已独立分仓**：`jinhucoco/insar-genie-dsh`（以插件为中心，内嵌本技能脚本）。使用 DSH 请到该仓库安装插件，本仓库不再含 `dsh/` 插件目录。
 
 ---
 
@@ -22,26 +24,25 @@
 
 ## 📦 安装（按 Agent 选择一种）
 
-### 🧩 DeepSeek Harness (DSH) — 一键安装为插件
+### 🧩 DeepSeek Harness (DSH) — 使用独立插件仓库
 
-本仓库直接以 **agent preset 插件** 形式安装：安装后新建会话选择「**SBAS 全链路**」模式，
-AI 即自动携带 insar-genie 技能（下载/配套/实验/监控全部脚本），对话即用。
+DSH 的 SBAS 插件已**独立分仓**（`jinhucoco/insar-genie-dsh`），以插件为中心、内嵌本技能脚本，无需 agent preset。
 
 ```bash
+# 克隆插件仓库（或参考其 README 一键安装）
+git clone git@github.com:jinhucoco/insar-genie-dsh.git
+cd insar-genie-dsh
+
 # Windows（PowerShell）
-powershell -Command "irm https://raw.githubusercontent.com/jinhucoco/insar-genie/main/dsh/install-dsh.ps1 | iex"
+powershell -ExecutionPolicy Bypass -File install-dsh.ps1
 
 # macOS / Linux
-curl -fsSL https://raw.githubusercontent.com/jinhucoco/insar-genie/main/dsh/install-dsh.sh | bash
+bash install-dsh.sh
 ```
 
-安装后：
-1. 打开 DSH Web 界面 → 点击「新建会话」
-2. 选择模式（preset）: **SBAS 全链路**
-3. 对话中说「配置 ASF 账号密码」→ 引导填写 Earthdata 凭证，即可开始
+安装后重启 DSH Web，在任意会话直接说需求（插件已注册 insar-genie 技能，AI 自动驱动全链路），无需选 preset。
 
-> 卸载：删除 `~/.dsh/.agent-presets/insar-genie/` 目录即可。
-> 源码位置：仓库 `dsh/insar-genie/`（agent.cordis.yml + preset.yml + 自带技能），安装脚本 `dsh/install-dsh.ps1` / `dsh/install-dsh.sh`。
+> 插件安装脚本以 file: 依赖写入 DSH web profile 并 pnpm install；本仓库只提供技能（SKILL.md + 脚本），DSH 把技能打包进插件 `assets/`。
 
 ### 🤖 pi — npm 技能包
 
@@ -63,7 +64,9 @@ curl -fsSL https://raw.githubusercontent.com/jinhucoco/insar-genie/main/install.
 ### 📥 离线 / 手动安装
 
 从 GitHub Releases 下载 `insar-genie-<version>.zip`，解压后将目录放到对应 Agent 的技能目录
-（pi 为 `~/.pi/agent/skills/`，DSH 为 `~/.dsh/.agent-presets/`），再按上面方式在对话中开始使用。
+（pi 为 `~/.pi/agent/skills/`，Codex / Claude / Cursor 安装到各自 skills 目录），再按上面方式在对话中开始使用。
+
+> DSH 用户请用独立插件仓库 `insar-genie-dsh`（见上），不适用本技能仓库的离线解压。
 
 ---
 
