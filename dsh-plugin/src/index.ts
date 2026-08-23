@@ -1,8 +1,8 @@
 import { Context } from "@deepseek-ai/cordis";
 import { join } from "node:path";
 import { createRegistry } from "./host/registry.js";
-import { registerTools } from "./host/tools.js";
-import { registerSettings } from "./host/settings.js";
+import { registerTools, type SettingsValue } from "./host/tools.js";
+import { registerSettings, SETTINGS_NS } from "./host/settings.js";
 
 export * from "./shared/types.js";
 export { computeStatus } from "./host/status.js";
@@ -23,7 +23,8 @@ export const REGISTRY_DIR = () =>
 export function apply(ctx: Context) {
   const registry = createRegistry(REGISTRY_DIR());
   registerSettings(ctx);
-  registerTools(ctx as never, { registry });
+  const readSettings = () => ctx.settings?.get(SETTINGS_NS) as SettingsValue | undefined;
+  registerTools(ctx as never, { registry, settings: { get: readSettings } });
   // 注：cordis 4.0.1 的 Events 键不含 'dispose'，按简报意图保留空 disposer 占位，用 as any 适配
   ctx.on("dispose" as any, () => {});
 }

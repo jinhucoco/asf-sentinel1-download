@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { createRegistry } from "./host/registry.js";
 import { registerTools } from "./host/tools.js";
-import { registerSettings } from "./host/settings.js";
+import { registerSettings, SETTINGS_NS } from "./host/settings.js";
 export * from "./shared/types.js";
 export { computeStatus } from "./host/status.js";
 export { getTemplate, validateBaseline } from "./host/templates.js";
@@ -16,7 +16,8 @@ export const REGISTRY_DIR = () => process.env.DSH_HOME
 export function apply(ctx) {
     const registry = createRegistry(REGISTRY_DIR());
     registerSettings(ctx);
-    registerTools(ctx, { registry });
+    const readSettings = () => ctx.settings?.get(SETTINGS_NS);
+    registerTools(ctx, { registry, settings: { get: readSettings } });
     // 注：cordis 4.0.1 的 Events 键不含 'dispose'，按简报意图保留空 disposer 占位，用 as any 适配
     ctx.on("dispose", () => { });
 }

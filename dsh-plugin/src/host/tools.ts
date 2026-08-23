@@ -7,6 +7,18 @@ import { computeStatus } from "./status.js";
 import { runPython } from "./runner.js";
 import type { Experiment, ExperimentParams, TerrainType } from "../shared/types.js";
 
+/** settings 的值对象形状（与 SettingsSchema resolve 后的字段对齐，避免 schemastery 携带类型） */
+export interface SettingsValue {
+  earthdataUser: string;
+  earthdataPassword: string;
+  gacosEmail: string;
+  gacosImapAuthCode: string;
+  enviIdl: string;
+  sarscapeLib: string;
+  workDir: string;
+  poeorbDir: string;
+}
+
 /** 通用输出：宽松 object schema + JSON 文本渲染（同 dsh-tool-goal 的 GOAL_OUTPUT） */
 const JSON_OUTPUT = {
   schema: { type: "object", additionalProperties: true },
@@ -22,7 +34,10 @@ const JSON_OUTPUT = {
  */
 export function registerTools(
   ctx: any,
-  deps: { registry: ReturnType<typeof createRegistry> },
+  deps: {
+    registry: ReturnType<typeof createRegistry>;
+    settings?: { get(): SettingsValue | undefined };
+  },
 ) {
   ctx.tools.register(defineTool({
     name: "insar_run",
@@ -174,6 +189,28 @@ export function registerTools(
           status: e.status,
           dir: e.dir,
         })),
+      } as never);
+    },
+  }));
+
+  ctx.tools.register(defineTool({
+    name: "insar_settings",
+    description: "Read the resolved insar-genie settings (credentials/paths after startup path probing). Returns the effective values; ENVI IDL + SARscape paths are auto-detected at plugin startup unless manually overridden.",
+    parameters: {
+      _unused: { type: "string", description: "Unused; kept to satisfy schema." },
+    },
+    output: JSON_OUTPUT,
+    execute() {
+      const s = deps.settings?.get();
+      return Promise.resolve({
+        earthdataUser: s?.earthdataUser ?? "",
+        earthdataPassword: s?.earthdataPassword ?? "",
+        gacosEmail: s?.gacosEmail ?? "",
+        gacosImapAuthCode: s?.gacosImapAuthCode ?? "",
+        enviIdl: s?.enviIdl ?? "",
+        sarscapeLib: s?.sarscapeLib ?? "",
+        workDir: s?.workDir ?? "",
+        poeorbDir: s?.poeorbDir ?? "",
       } as never);
     },
   }));

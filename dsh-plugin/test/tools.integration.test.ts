@@ -94,3 +94,41 @@ describe("insar_run → multi_download.py 真实 CLI 参数构造", () => {
     })).rejects.toThrow(/insar_run failed/);
   });
 });
+
+describe("insar_settings → 返回 resolve 后的设置值（含路径探测结果）", () => {
+  function registerSettingsTool(dir: string, settingsValues?: Record<string, string>): Tool {
+    const registry = createRegistry(join(dir, "registry"));
+    const registered: Tool[] = [];
+    const ctx: any = { tools: { register: (t: Tool) => registered.push(t) } };
+    registerTools(ctx, {
+      registry,
+      settings: settingsValues ? { get: () => settingsValues } : undefined,
+    });
+    const t = registered.find((x) => x.name === "insar_settings");
+    if (!t) throw new Error("insar_settings not registered");
+    return t;
+  }
+
+  it("无 settings 服务时返回全空（不抛错）", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "insar-settings-"));
+    const t = registerSettingsTool(dir);
+    const out = await t.execute({});
+    expect(out).toMatchObject({ earthdataUser: "", enviIdl: "" });
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("有 settings 时返回探测后的值（enviIdl/sarscapeLib 非空）", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "insar-settings-"));
+    const t = registerSettingsTool(dir, {
+      earthdataUser: "demo@earthdata",
+      enviIdl: "C:\\Program Files\\Harris\\ENVI56\\IDL88\\bin\\bin.x86_64\\envi_idl.exe",
+      sarscapeLib: "C:\\Program Files\\SARMAP SA\\SARscape",
+      poeorbDir: "",
+    });
+    const out = await t.execute({}) as Record<string, string>;
+    expect(out.earthdataUser).toBe("demo@earthdata");
+    expect(out.enviIdl).toMatch(/envi_idl\.exe$/);
+    expect(out.sarscapeLib).toMatch(/sarscape$/i);
+    rmSync(dir, { recursive: true, force: true });
+  });
+});

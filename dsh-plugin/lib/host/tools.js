@@ -148,6 +148,27 @@ export function registerTools(ctx, deps) {
             });
         },
     }));
+    ctx.tools.register(defineTool({
+        name: "insar_settings",
+        description: "Read the resolved insar-genie settings (credentials/paths after startup path probing). Returns the effective values; ENVI IDL + SARscape paths are auto-detected at plugin startup unless manually overridden.",
+        parameters: {
+            _unused: { type: "string", description: "Unused; kept to satisfy schema." },
+        },
+        output: JSON_OUTPUT,
+        execute() {
+            const s = deps.settings?.get();
+            return Promise.resolve({
+                earthdataUser: s?.earthdataUser ?? "",
+                earthdataPassword: s?.earthdataPassword ?? "",
+                gacosEmail: s?.gacosEmail ?? "",
+                gacosImapAuthCode: s?.gacosImapAuthCode ?? "",
+                enviIdl: s?.enviIdl ?? "",
+                sarscapeLib: s?.sarscapeLib ?? "",
+                workDir: s?.workDir ?? "",
+                poeorbDir: s?.poeorbDir ?? "",
+            });
+        },
+    }));
 }
 function readFileSafe(path, fallback) {
     try {
