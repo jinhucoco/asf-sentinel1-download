@@ -4,6 +4,21 @@ let react = require("react");
 let react_jsx_runtime = require("react/jsx-runtime");
 let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
 
+//#region src/shared/baseline.ts
+/**
+* 防呆：空间基线必须 2-4%（设计铁律，杜绝 45% 事故）。
+* 单一来源：host（templates.ts）与 client（ParamConfirm 确认卡）共用，避免双源漂移。
+* 纯函数、无任何平台依赖，可同时被 host 与 client（tsdown browser bundle）引用。
+*/
+function validateBaseline(perc) {
+	if (perc >= 2 && perc <= 4) return { ok: true };
+	return {
+		ok: false,
+		message: `空间基线 ${perc}% 不在允许区间 2-4%（SARscape 默认 45% 是事故根源，已禁止）`
+	};
+}
+
+//#endregion
 //#region src/client/shared.tsx
 /** 五步进度标签（与 host status.ts 一致） */
 const STEP_LABELS = [
@@ -21,17 +36,6 @@ const TERRAIN_LABELS = {
 	desert: "沙漠",
 	loess: "黄土高原"
 };
-/**
-* 防呆：空间基线必须在 2-4%（杜绝 45% 事故）。
-* 与 host templates.ts 的 validateBaseline 语义一致。
-*/
-function validateBaseline(perc) {
-	if (perc >= 2 && perc <= 4) return { ok: true };
-	return {
-		ok: false,
-		message: `空间基线 ${perc}% 不在允许区间 2-4%（SARscape 默认 45% 是事故根源，已禁止）`
-	};
-}
 /** turnTail 插槽渲染的通用包装（简单卡片容器） */
 function PanelCard(props) {
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {

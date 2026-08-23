@@ -1,4 +1,6 @@
 node_modules/
-lib/
 *.log
 !dsh-plugin/test/fixtures/*.log
+# lib/ 为构建产物，但本包作为源码包随仓库发布（main 指向 lib/index.js），
+# 入库以便 clone 后开箱即用（无需再 npm run build）。仅排除 sourcemap。
+lib/**/*.map
