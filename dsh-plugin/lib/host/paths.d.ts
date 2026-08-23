@@ -6,3 +6,5 @@ export declare function resolveScriptsDir(override?: string): string;
 export declare function resolveExperimentDir(override?: string): string;
 /** 是否插件内置目录存在脚本（供工具在缺省时兜底报错提示） */
 export declare function hasBundledScripts(): boolean;
+/** 解析插件 assets 根（skill 的 resourceBase：SKILL.md 与 scripts/ experiment/ 并列于此）。 */
+export declare function resolveAssetsDir(): string;

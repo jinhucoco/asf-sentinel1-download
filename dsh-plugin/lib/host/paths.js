@@ -43,3 +43,7 @@ export function resolveExperimentDir(override) {
 export function hasBundledScripts() {
     return existsSync(join(pluginRoot(), "assets", "scripts", "multi_download.py"));
 }
+/** 解析插件 assets 根（skill 的 resourceBase：SKILL.md 与 scripts/ experiment/ 并列于此）。 */
+export function resolveAssetsDir() {
+    return join(pluginRoot(), "assets");
+}
