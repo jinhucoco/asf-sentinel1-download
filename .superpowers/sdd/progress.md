@@ -82,3 +82,5 @@
 - client 接线: COMPLETE（a5d08a5 + c667206，dev 已推，复核 MERGEABLE）
 - [用户用 Pi 修加载报错] 8 提交（cd074d5..08f37fd，本地=远程 08f37fd）：cordis.patch.yml 入库、inject 服务名 [tools,settings]/[slots,conversationEvents]、bundle 注册 id 改包全名、var module/exports 注入、dsh.client.inject 包名 vs client.js 服务名区分、P1 防呆接入 host 工具 + validateBaseline 去重 + 动态速率
 - [GUI 端到端验证 2026-08-23] 浏览器打开正常（0 报错）；/plugins/@dsh-custom/insar-genie-dsh/client.js 加载 200；设置页出现 insar-genie 区段且 SettingsCard 完整渲染（9 字段+保存）；host 工具 insar_register/insar_list/insar_status 全链路可用（真实 G:\minqin1_result_SBAS_processing 读出 干涉图 21% 65/310）；注册表持久化于 ~/.insar-genie/experiments.json；测试实验已清理
+- [设置 UX 改进] 229e55b：删死字段 registryDir（host 硬编码 registry 目录，用户无需配置）+ IMAP 授权码改名"邮箱授权码"（普通用户可读，未来扩展 POP3 复用）
+- [启动时路径探测] 2a4d4a1：新增 src/host/probe.ts（环境变量>Program Files 探测 ENVI IDL + SARscape），探测结果作为设置 base 层默认值，UI 显示"▲ 启动时自动定位"标记；POEORB/工作目录不探测（保留手动）；70/70 测试 + 双 tsc 0；真实探测验证命中本机 C:\Program Files\Harris\ENVI56\...\envi_idl.exe + C:\Program Files\SARMAP SA\SARscape
