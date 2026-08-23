@@ -74,3 +74,9 @@
 - 独立审查(client 接线 a5d08a5): NOT_MERGEABLE —— 3 严重（latestInsarStatus 取最旧/snapshot 喂 initial 而非 snapshot prop/跨 turn 泄漏压制 experiments+registered）+ 重要 4-5 + 次要 6-8
 - 修复已提交 c667206 + 推送 dev（发现 1-3,5,7,8；60/60 测试 + 双 tsc 0；bundle 同步安装副本）
 - 复核审查: 已分派（逐条核实 c667206 修复 + 发现 4 的测试补覆盖）
+- 复核审查: MERGEABLE —— 8 发现全部真修复（非表面），60/60 + 双 tsc 0，工作区干净；剩余 4 项次要设计语义不阻塞（记录为后续迭代）：
+  * 快照会话级最新跨实验混显（多实验会话旧 turn 面板显示另一实验进度；单实验主流程无影响）
+  * 快照窗口截断/call=null 时陈旧回退（边缘场景）
+  * fetchStatus 轮询 experimentId 兜底被移除（旧代码 registered.experimentId 兜底，现仅 latest.experimentId）
+  * 多个完成 turn 各渲染一块"实时"面板（per-turn tail + 全局最新，设计取舍）
+- client 接线: COMPLETE（a5d08a5 + c667206，dev 已推，复核 MERGEABLE）
