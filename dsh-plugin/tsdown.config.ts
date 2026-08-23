@@ -15,7 +15,7 @@ export default defineConfig({
   outExtensions: () => ({ js: ".js", dts: ".d.ts" }),
   deps: { neverBundle: [/^@deepseek-ai\//, /^react$/, /^react\/jsx-runtime$/] },
   banner: () =>
-    `window.__ModuleLoader__.load({ id: "@dsh-custom/insar-genie-dsh", factory: (require) => {`,
+    `window.__ModuleLoader__.load({ id: "@dsh-custom/insar-genie-dsh", factory: (require) => {\n\n\t\tvar module = { exports: {} };\n\t\tvar exports = module.exports;`,
   footer: () => `return module.exports; } });`,
   minify: false,
   sourcemap: true,
