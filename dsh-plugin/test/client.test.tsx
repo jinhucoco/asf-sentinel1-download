@@ -1,9 +1,14 @@
 // @vitest-environment jsdom
-import { describe, it, expect, afterEach } from "vitest";
+import { describe, it, expect, afterEach, vi } from "vitest";
+// dsh-client-runtime 是 ModuleLoader 格式浏览器 bundle，vitest 环境 mock 掉运行时函数
+vi.mock("@deepseek-ai/dsh-client-runtime/client", () => ({
+  isAppendSurfaceEvent: (event: { surfaceOp?: string }) => event.surfaceOp === "append",
+}));
 import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/react";
 import { createElement } from "react";
 import { ProgressPanel } from "../src/client/ProgressPanel.js";
 import { ParamConfirm } from "../src/client/ParamConfirm.js";
+import { InsarTurnTail } from "../src/client/index.js";
 import { validateBaseline, type ParamSnapshot, type ProgressSnapshot } from "../src/client/shared.js";
 
 // vitest 无自动 cleanup，每个测试后卸载 DOM，避免多元素查询歧义
@@ -68,6 +73,70 @@ describe("ProgressPanel", () => {
     };
     render(createElement(ProgressPanel, { experimentId: "e1", fetchStatus }));
     await waitFor(() => expect(screen.getByText(/192\/376/)).toBeTruthy(), { timeout: 2000 });
+  });
+});
+
+describe("InsarTurnTail（host→client 接线）", () => {
+  it("matched.status 渲染进度面板", () => {
+    render(createElement(InsarTurnTail, { matched: { status: PROGRESS } }));
+    expect(screen.getByText("干涉图生成 51%")).toBeTruthy();
+  });
+
+  it("会话快照的最新 insar_status 优先于 matched（AI 每次调用自动更新）", () => {
+    const snapshot = {
+      nodes: [
+        {
+          kind: "tool-result",
+          call: { name: "insar_status", argsRaw: JSON.stringify({ experimentId: "e1" }) },
+          content: [
+            {
+              type: "tool-result",
+              content: [{ type: "text", text: JSON.stringify({ ...PROGRESS, progressLabel: "解缠 88%" }) }],
+            },
+          ],
+        },
+      ],
+    };
+    const useSession = (sel: (s: unknown) => unknown) => sel(snapshot);
+    render(createElement(InsarTurnTail, {
+      matched: { status: PROGRESS },
+      useSession,
+    }));
+    expect(screen.getByText("解缠 88%")).toBeTruthy();
+  });
+
+  it("matched.experiments 渲染实验列表", () => {
+    render(createElement(InsarTurnTail, {
+      matched: { experiments: [{ id: "e1", name: "minqin", terrain: "desert", status: "running" }] },
+    }));
+    expect(screen.getByText("insar-genie 设置")).toBeTruthy();
+    expect(screen.getByText(/minqin/)).toBeTruthy();
+  });
+
+  it("matched.registered 渲染注册成功提示", () => {
+    render(createElement(InsarTurnTail, { matched: { registered: { ok: true, experimentId: "e9" } } }));
+    expect(screen.getByText(/实验已注册：e9/)).toBeTruthy();
+  });
+
+  it("matched.paramConfirm 渲染参数确认卡", () => {
+    render(createElement(InsarTurnTail, {
+      matched: {
+        paramConfirm: {
+          terrain: "desert",
+          params: {
+            rgLooks: 8, azLooks: 2, maxTimeBaselineDays: 180, maxPercBaseline: 2,
+            filtering: "GOLDSTEIN", goldsteinWinSize: 64, unwrap: "MCF", unwrapCohThreshold: 0.2,
+            useGacos: true, demFile: "",
+          },
+        },
+      },
+    }));
+    expect(screen.getByText("确认执行")).toBeTruthy();
+  });
+
+  it("无数据时渲染 null", () => {
+    const { container } = render(createElement(InsarTurnTail, { matched: {} }));
+    expect(container.firstChild).toBeNull();
   });
 });
 

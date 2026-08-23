@@ -2,6 +2,7 @@ window.__ModuleLoader__.load({ id: "insar-genie-dsh", factory: (require) => {
 Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
 let react = require("react");
 let react_jsx_runtime = require("react/jsx-runtime");
+let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
 
 //#region src/client/shared.tsx
 /** 五步进度标签（与 host status.ts 一致） */
@@ -55,10 +56,13 @@ function PanelCard(props) {
 //#region src/client/ProgressPanel.tsx
 /**
 * 进度面板：五步进度条 + 剩余时间 + 异常区。
-* 挂载于 conversation.chat.turnTail；自带 30s 轮询（不依赖 AI 主动汇报）。
+* 挂载于 conversation.chat.turnTail。
 *
-* 数据获取通过注入的 fetchStatus（client 侧由 host/agent 通过 props 注入，
-* 或由调用方传入从 insar_status 工具获得的数据源）——见 client/index.ts 的接线说明。
+* 数据源（按优先级）：
+* 1. snapshot —— 会话快照实时提取的 insar_status 结果（host→client 原生通道；
+*    快照每次更新面板随之刷新，无需轮询）
+* 2. fetchStatus —— 注入的轮询函数（30s，window.insarGenieBridge 或 props 注入）
+* 3. initial —— 一次性初始值（仅挂载时生效）
 */
 function ProgressPanel(props) {
 	const [status, setStatus] = (0, react.useState)(props.initial ?? null);
@@ -84,8 +88,9 @@ function ProgressPanel(props) {
 			clearInterval(timer);
 		};
 	}, [props.experimentId, props.fetchStatus]);
+	const display = props.snapshot ?? status;
 	const title = `SBAS 实验进度${props.experimentLabel ? ` · ${props.experimentLabel}` : ""}`;
-	if (!status && !error) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(PanelCard, {
+	if (!display && !error) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(PanelCard, {
 		title,
 		children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
 			style: { color: "#888" },
@@ -99,15 +104,15 @@ function ProgressPanel(props) {
 			children: ["⚠️ 无法读取进度：", error]
 		})
 	});
-	if (status?.error) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(PanelCard, {
+	if (display?.error) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(PanelCard, {
 		title,
 		children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
 			style: { color: "#c00" },
-			children: ["⚠️ ", status.error.detail || status.progressLabel]
+			children: ["⚠️ ", display.error.detail || display.progressLabel]
 		})
 	});
-	const stepIndex = Math.min(status.stepIndex, STEP_LABELS.length - 1);
-	const etaH = Math.round(status.etaMinutes / 60);
+	const stepIndex = Math.min(display.stepIndex, STEP_LABELS.length - 1);
+	const etaH = Math.round(display.etaMinutes / 60);
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(PanelCard, {
 		title,
 		children: [
@@ -132,19 +137,19 @@ function ProgressPanel(props) {
 			}),
 			/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 				style: { marginBottom: 4 },
-				children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: status.progressLabel })
+				children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("strong", { children: display.progressLabel })
 			}),
-			status.totalPairs > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+			display.totalPairs > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 				style: { marginBottom: 4 },
 				children: [
 					"已完成 ",
-					status.donePairs,
+					display.donePairs,
 					"/",
-					status.totalPairs,
+					display.totalPairs,
 					" 对",
-					status.pairsPerMinute > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", { children: [
+					display.pairsPerMinute > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", { children: [
 						" · 速率 ",
-						status.pairsPerMinute.toFixed(2),
+						display.pairsPerMinute.toFixed(2),
 						" 对/分"
 					] }),
 					etaH > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", { children: [
@@ -154,15 +159,15 @@ function ProgressPanel(props) {
 					] })
 				]
 			}),
-			status.diskGb > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+			display.diskGb > 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 				style: { color: "#888" },
 				children: [
 					"数据盘占用：",
-					status.diskGb.toFixed(1),
+					display.diskGb.toFixed(1),
 					" GB"
 				]
 			}),
-			status.isStalled && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+			display.isStalled && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
 				style: {
 					border: "1px solid #e91e63",
 					color: "#c2185b",
@@ -360,16 +365,192 @@ function SettingsCard(props) {
 }
 
 //#endregion
+//#region src/client/conversation.ts
+/** 本 Definition 关注的 insar 工具名 */
+const INSAR_TOOLS = /* @__PURE__ */ new Set([
+	"insar_status",
+	"insar_list",
+	"insar_register",
+	"insar_templates"
+]);
+/**
+* 从 tool/result 事件的 message.content 提取 render 输出的 JSON 文本。
+* host JSON_OUTPUT.render 产出 [{type:"text", text: JSON.stringify(value)}]，
+* message.content 是 [ToolResultBlock]，其 content 是 ContentBlock[]。
+*/
+function extractToolResultText(content) {
+	const block = content?.[0];
+	if (!block || block.type !== "tool-result") return null;
+	const inner = block.content ?? [];
+	for (const c of inner) if (c.type === "text" && typeof c.text === "string") return c.text;
+	return null;
+}
+/** 解析 tool/result 中的结构化 JSON；失败返回 undefined（不中断状态机） */
+function parseToolResultJson(content) {
+	const text = extractToolResultText(content);
+	if (!text) return void 0;
+	try {
+		return JSON.parse(text);
+	} catch {
+		return;
+	}
+}
+/** 单 turn 内累积 insar 工具结果的 Conversation 业务 Definition */
+const insarGenieDefinition = {
+	kind: "insar-genie",
+	match(event) {
+		if (event.type === "turn/start") return {
+			id: String(event.data.turn),
+			role: "start"
+		};
+		if (event.type === "tool/call" && INSAR_TOOLS.has(event.data.name)) return {
+			id: String(event.data.turn),
+			role: "update"
+		};
+		if (event.type === "tool/result" && (0, _deepseek_ai_dsh_client_runtime_client.isAppendSurfaceEvent)(event)) return {
+			id: String(event.data.turn),
+			role: "update"
+		};
+		return null;
+	},
+	start(context, match) {
+		if (match.event.type !== "turn/start") throw new Error("insar-genie start requires turn/start");
+		return {
+			turn: match.event.data.turn,
+			calls: /* @__PURE__ */ new Map()
+		};
+	},
+	update(context, match) {
+		const state = context.state;
+		if (match.event.type === "tool/call") {
+			const calls = new Map(state.calls);
+			calls.set(String(match.event.data.callId), {
+				name: match.event.data.name,
+				args: match.event.data.arguments
+			});
+			return {
+				...state,
+				calls
+			};
+		}
+		if (match.event.type !== "tool/result") return state;
+		const callId = String(match.event.data.message.source.callId);
+		const call = state.calls.get(callId);
+		if (!call || !INSAR_TOOLS.has(call.name)) return state;
+		const json = parseToolResultJson(match.event.data.message.content);
+		if (json === void 0) return state;
+		if (call.name === "insar_status" && isProgressSnapshot(json)) return {
+			...state,
+			status: json
+		};
+		if (call.name === "insar_list" && isExperimentList(json)) return {
+			...state,
+			experiments: json.experiments
+		};
+		if (call.name === "insar_register" && isRegistered(json)) return {
+			...state,
+			registered: {
+				ok: json.ok === true,
+				experimentId: json.experimentId
+			}
+		};
+		if (call.name === "insar_templates" && isParams(json)) {
+			let terrain = "";
+			try {
+				const callArgs = JSON.parse(call.args);
+				if (typeof callArgs.terrain === "string") terrain = callArgs.terrain;
+			} catch {}
+			return {
+				...state,
+				paramConfirm: {
+					terrain,
+					params: json
+				}
+			};
+		}
+		return state;
+	},
+	buildLocationData(context, scope) {
+		if (scope !== "turn" || context.state === void 0) return null;
+		const { status, experiments, registered, paramConfirm } = context.state;
+		if (!status && !experiments && !registered && !paramConfirm) return null;
+		return {
+			kind: "turn",
+			turn: context.state.turn,
+			key: "insar-genie",
+			value: {
+				status,
+				experiments,
+				registered,
+				paramConfirm
+			}
+		};
+	}
+};
+/** turnTail chain select：仅当该 turn 有 insar 工具结果时认领，否则 null 放行其他贡献者 */
+function selectInsarTurn(owner) {
+	const data = owner.turn.data.get("insar-genie");
+	if (!data) return null;
+	if (!data.status && !data.experiments && !data.registered && !data.paramConfirm) return null;
+	return data;
+}
+/**
+* 从 ConversationSnapshot 提取最新一次 insar_status 的结构化结果。
+* 这是 host→client 的真实数据通道：host 工具结果经会话事件流到达 client，
+* 组件订阅快照即可实时显示，无需 window 桥、无需 30s 轮询。
+* @param nodes - snapshot.nodes（legacy 兼容字段，所有已物化会话节点）
+* @returns 最新 insar_status 结果 + 工具调用参数里的 experimentId（可作标签），无则 null
+*/
+function latestInsarStatus(nodes) {
+	if (!nodes || nodes.length === 0) return null;
+	let latest = null;
+	for (const node of nodes) {
+		if (node?.kind !== "tool-result") continue;
+		if (node.call?.name !== "insar_status") continue;
+		if (!latest) latest = node;
+	}
+	if (!latest) return null;
+	const json = parseToolResultJson(latest.content);
+	if (!isProgressSnapshot(json)) return null;
+	let experimentId;
+	try {
+		const args = JSON.parse(latest.call?.argsRaw ?? "{}");
+		if (typeof args.experimentId === "string") experimentId = args.experimentId;
+	} catch {}
+	return {
+		status: json,
+		experimentId
+	};
+}
+function isProgressSnapshot(v) {
+	return typeof v === "object" && v !== null && typeof v.stepIndex === "number" && typeof v.progressLabel === "string";
+}
+function isExperimentList(v) {
+	return typeof v === "object" && v !== null && Array.isArray(v.experiments) && v.experiments.every((e) => typeof e === "object" && e !== null && typeof e.id === "string");
+}
+function isRegistered(v) {
+	return typeof v === "object" && v !== null && typeof v.experimentId === "string";
+}
+/** insar_templates 返回的参数模板（ExperimentParams 形状的宽松校验） */
+function isParams(v) {
+	return typeof v === "object" && v !== null && typeof v.rgLooks === "number";
+}
+
+//#endregion
 //#region src/client/index.ts
 /**
 * insar-genie-dsh client 入口。
 * 通过 DSH client 插槽注册：
-* - turnTail（conversation.chat.turnTail）：按注入 kind 渲染 ProgressPanel 或 ParamConfirm
+* - conversationEvents：insar 工具结果（insar_status/insar_list/insar_register）累积为
+*   turn 级业务数据（conversation.ts 的 insarGenieDefinition）
+* - turnTail（conversation.chat.turnTail，chain）：当一轮 turn 有 insar 工具活动时认领，
+*   组件通过框架注入的 useSession 从会话快照提取最新 insar_status 结果并渲染进度面板
 * - settings.section：SettingsCard（设置页插件区）
 *
-* 数据接线：DSH client 无同步 host 工具调用通道，host/agent 把数据作为 props 注入
-* （turnTail 的 inject 回调可从会话/消息上下文携带进度快照或参数快照）；
-* ProgressPanel 也支持 fetchStatus 轮询注入（window.insarGenieBridge）。
+* 数据接线（host→client）：DSH 无同步 host 工具调用通道，但 host 工具结果作为
+* tool/result 会话事件流入 client 的 ConversationSnapshot——组件订阅快照即拿到
+* 真实数据，无需 window 桥、无需轮询。window.insarGenieBridge 仅保留为可选
+* 注入位（未来 host 若提供 HTTP 桥可直接替换），默认数据源是会话快照。
 */
 const name = "insar-genie-dsh";
 const inject = [
@@ -377,21 +558,46 @@ const inject = [
 	"@deepseek-ai/dsh-client-locale",
 	"@deepseek-ai/dsh-client-ui-settings-plugins"
 ];
-function renderTurnTail(props) {
-	if (props?.kind === "param-confirm" && props.terrain && props.params) return (0, react.createElement)(ParamConfirm, {
-		terrain: props.terrain,
-		params: props.params,
-		onConfirm: props.onConfirm ?? (() => {}),
-		onCancel: props.onCancel ?? (() => {})
+/** turnTail 组件（chain 注册，session 作用域）：
+* - matched：selectInsarTurn 的返回（该 turn 有 insar 工具活动才认领）
+* - useSession：框架注入的会话快照选择器——从快照提取最新 insar_status 结果，
+*   实时反映 host 读取的真实进度（AI 每次调用 insar_status 面板自动更新）
+*/
+function InsarTurnTail(props) {
+	const snapshot = props.useSession?.((s) => s) ?? void 0;
+	const latest = latestInsarStatus(snapshot?.nodes);
+	if (props.matched?.paramConfirm) return (0, react.createElement)(ParamConfirm, {
+		terrain: props.matched.paramConfirm.terrain,
+		params: props.matched.paramConfirm.params,
+		onConfirm: () => {},
+		onCancel: () => {}
 	});
-	return (0, react.createElement)(ProgressPanel, {
-		experimentId: props?.experimentId,
-		experimentLabel: props?.experimentLabel,
-		fetchStatus: props?.fetchStatus ?? window.insarGenieBridge?.fetchStatus,
-		initial: props?.initialProgress
+	const status = latest?.status ?? props.matched?.status;
+	const experimentId = latest?.experimentId ?? props.matched?.registered?.experimentId;
+	if (status) return (0, react.createElement)(ProgressPanel, {
+		experimentId,
+		experimentLabel: void 0,
+		fetchStatus: window.insarGenieBridge?.fetchStatus,
+		initial: status
 	});
+	if (props.matched?.experiments && props.matched.experiments.length > 0) return (0, react.createElement)(SettingsCard, {
+		experiments: props.matched.experiments,
+		onSave: (s) => {
+			console.info("[insar-genie] settings save requested", s);
+		}
+	});
+	if (props.matched?.registered) return (0, react.createElement)("div", { style: {
+		border: "1px solid #ccc",
+		borderRadius: 8,
+		padding: 12,
+		margin: "8px 0",
+		maxWidth: 640,
+		fontSize: 13
+	} }, `✅ 实验已注册：${props.matched.registered.experimentId}`);
+	return null;
 }
 function apply(ctx) {
+	ctx.conversationEvents.register(insarGenieDefinition);
 	ctx.slots.inject("settings.section", () => {
 		const off = ctx.slots.register({
 			name: "settings.section",
@@ -412,10 +618,9 @@ function apply(ctx) {
 	ctx.slots.inject("conversation.chat.turnTail", () => {
 		const off = ctx.slots.register({
 			name: "conversation.chat.turnTail",
-			priority: -1,
-			registrant: "insar-genie-dsh",
-			inject: () => ({})
-		}, (props) => renderTurnTail(props));
+			select: selectInsarTurn,
+			registrant: "insar-genie-dsh"
+		}, InsarTurnTail);
 		return () => {
 			if (typeof off === "function") off();
 		};
@@ -423,6 +628,7 @@ function apply(ctx) {
 }
 
 //#endregion
+exports.InsarTurnTail = InsarTurnTail;
 exports.apply = apply;
 exports.inject = inject;
 exports.name = name;
