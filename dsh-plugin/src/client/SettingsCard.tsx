@@ -28,10 +28,15 @@ const FIELD_LABELS: Record<keyof SettingsShape, string> = {
  * 设置卡片：凭证/路径/POEORB 表单 + 实验列表。
  * 挂载于 settings.section（设置页插件区）。
  * 数据通过注入的 settings + experiments 传入（host/agent 接线），本组件只做展示与编辑回调。
+ *
+ * 启动时路径探测：host 侧在 base 层填好 enviIdl/sarscapeLib 默认值，
+ * 字段里已显示探测路径 —— 无需手动填专业软件路径（普通用户友好）。
+ * autoDetected 标记（若有）则额外显示"▲ 启动时自动定位"。
  */
 export function SettingsCard(props: {
   settings?: Partial<SettingsShape>;
   experiments?: { id: string; name: string; terrain: string; status: string }[];
+  autoDetected?: { enviIdl?: boolean; sarscapeLib?: boolean };
   onSave?: (s: SettingsShape) => void;
 }): ReactNode {
   const [settings, setSettings] = useState<SettingsShape>({
@@ -56,6 +61,9 @@ export function SettingsCard(props: {
         {(Object.keys(FIELD_LABELS) as (keyof SettingsShape)[]).map((key) => (
           <label key={key} style={{ display: "flex", flexDirection: "column", fontSize: 12 }}>
             {FIELD_LABELS[key]}
+            <span style={{ fontSize: 11, color: "#2e7d32" }}>
+              {props.autoDetected?.[key as "enviIdl" | "sarscapeLib"] ? "▲ 启动时自动定位" : ""}
+            </span>
             <input
               type={key === "earthdataPassword" || key === "gacosImapAuthCode" ? "password" : "text"}
               value={settings[key]}

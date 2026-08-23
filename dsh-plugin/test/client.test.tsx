@@ -235,6 +235,14 @@ describe("SettingsCard（设置表单字段）", () => {
     render(createElement(SettingsCard, {}));
     expect(screen.queryByText("注册表目录")).toBeNull();
   });
+
+  it("autoDetected 标记显示'启动时自动定位'（ENVI/SARscape 探测命中提示）", () => {
+    render(createElement(SettingsCard, {
+      settings: { enviIdl: "C:\\Program Files\\Harris\\ENVI56\\IDL88\\bin\\bin.x86_64\\envi_idl.exe" },
+      autoDetected: { enviIdl: true, sarscapeLib: true },
+    }));
+    expect(screen.getAllByText("▲ 启动时自动定位").length).toBe(2);
+  });
 });
 
 describe("ParamConfirm", () => {
