@@ -1,0 +1,8 @@
+# insar-genie-dsh: SBAS-InSAR 全链路插件。
+# Register the plugin entry in the web profile roster. The bundle mechanism
+# (dsh.bundle.patch in package.json) appends this patch automatically when the
+# package is listed in dsh.profile.bundles; the entry id is the plugin id so a
+# later manual mount would collide — do NOT also insert the same id by hand.
+- insert:
+    - id: insar-genie-dsh
+      name: '@dsh-custom/insar-genie-dsh'

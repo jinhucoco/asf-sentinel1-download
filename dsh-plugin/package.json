@@ -15,7 +15,8 @@
   "files": [
     "lib",
     "client",
-    "assets"
+    "assets",
+    "cordis.patch.yml"
   ],
   "scripts": {
     "build": "tsc -p tsconfig.json && npm run build:client",
