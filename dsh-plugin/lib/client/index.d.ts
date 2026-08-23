@@ -1,4 +1,5 @@
 import { createElement } from "react";
+import { type SettingsShape } from "./SettingsCard.js";
 import { type InsarTurnData } from "./conversation.js";
 import type { ProgressSnapshot } from "./shared.js";
 /**
@@ -41,4 +42,25 @@ export declare function InsarTurnTail(props: {
     matched: InsarTurnData;
     useSession: (selector: (s: unknown) => unknown) => unknown;
 }): ReturnType<typeof createElement> | null;
+/**
+ * SettingsCardBound：绑定 settingsScope 的容器组件。
+ * - 挂载时从 scope.getSnapshot().value 读 host 设置值（含启动探测 base 默认）
+ * - 订阅 scope 变化 → 更新显示（host 值变更时字段跟随）
+ * - onChange 通过 scope.set 逐字段写回 host
+ */
+export declare function SettingsCardBound(props: {
+    scope?: {
+        getSnapshot(): {
+            value?: SettingsShape;
+        };
+        subscribe(fn: () => void): () => void;
+        set(field: string, value: unknown): void;
+    };
+    experiments?: {
+        id: string;
+        name: string;
+        terrain: string;
+        status: string;
+    }[];
+}): ReturnType<typeof createElement>;
 export declare function apply(ctx: any): void;

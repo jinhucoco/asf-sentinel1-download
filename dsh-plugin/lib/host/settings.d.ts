@@ -8,8 +8,8 @@ export declare const SettingsSchema: z<Schemastery.ObjectS<{
     earthdataUser: z<string, string>;
     earthdataPassword: z<string, string>;
     gacosEmail: z<string, string>;
-    /** GACOS 邮箱授权码 —— 命名用"邮箱授权码"而非"IMAP 授权码"（普通用户不懂 IMAP 术语；
-     *  当前 gacos_fetch.py 只实现 IMAP 收取，改称邮箱授权码后未来扩展 POP3 也复用此字段） */
+    /** GACOS 邮箱 IMAP 授权码 —— 含 IMAP 术语更具体（明确是哪个邮箱的 IMAP 授权码）；
+     *  当前 gacos_fetch.py 只实现 IMAP 收取，故字段语义即 IMAP 授权码 */
     gacosImapAuthCode: z<string, string>;
     enviIdl: z<string, string>;
     sarscapeLib: z<string, string>;
@@ -20,8 +20,8 @@ export declare const SettingsSchema: z<Schemastery.ObjectS<{
     earthdataUser: z<string, string>;
     earthdataPassword: z<string, string>;
     gacosEmail: z<string, string>;
-    /** GACOS 邮箱授权码 —— 命名用"邮箱授权码"而非"IMAP 授权码"（普通用户不懂 IMAP 术语；
-     *  当前 gacos_fetch.py 只实现 IMAP 收取，改称邮箱授权码后未来扩展 POP3 也复用此字段） */
+    /** GACOS 邮箱 IMAP 授权码 —— 含 IMAP 术语更具体（明确是哪个邮箱的 IMAP 授权码）；
+     *  当前 gacos_fetch.py 只实现 IMAP 收取，故字段语义即 IMAP 授权码 */
     gacosImapAuthCode: z<string, string>;
     enviIdl: z<string, string>;
     sarscapeLib: z<string, string>;

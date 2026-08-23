@@ -1,7 +1,7 @@
-import { createElement } from "react";
+import { createElement, useState, useEffect } from "react";
 import { ProgressPanel } from "./ProgressPanel.js";
 import { ParamConfirm } from "./ParamConfirm.js";
-import { SettingsCard } from "./SettingsCard.js";
+import { SettingsCard, DEFAULT_SETTINGS } from "./SettingsCard.js";
 import { insarGenieDefinition, latestInsarStatus, selectInsarTurn, } from "./conversation.js";
 /**
  * insar-genie-dsh client 入口。
@@ -18,7 +18,7 @@ import { insarGenieDefinition, latestInsarStatus, selectInsarTurn, } from "./con
  * 注入位（未来 host 若提供 HTTP 桥可直接替换），默认数据源是会话快照。
  */
 export const name = "insar-genie-dsh";
-export const inject = ["slots", "conversationEvents"];
+export const inject = ["slots", "conversationEvents", "settingsScope"];
 /** turnTail 组件（chain 注册，session 作用域）：
  * - matched：selectInsarTurn 的返回（该 turn 有 insar 工具活动才认领）——**本 turn 数据优先**
  * - useSession：框架注入的会话快照选择器——仅用于对"本 turn 已有 insar_status 活动"的
@@ -75,10 +75,51 @@ export function InsarTurnTail(props) {
     }
     return null;
 }
+/**
+ * SettingsCardBound：绑定 settingsScope 的容器组件。
+ * - 挂载时从 scope.getSnapshot().value 读 host 设置值（含启动探测 base 默认）
+ * - 订阅 scope 变化 → 更新显示（host 值变更时字段跟随）
+ * - onChange 通过 scope.set 逐字段写回 host
+ */
+export function SettingsCardBound(props) {
+    const scope = props.scope;
+    const [draft, setDraft] = useState(() => ({ ...DEFAULT_SETTINGS, ...(scope?.getSnapshot().value ?? {}) }));
+    // 同步 host 值变化（编译期 scope 绑定后首次同步 + 订阅更新）
+    useEffect(() => {
+        const update = () => setDraft({ ...DEFAULT_SETTINGS, ...(scope?.getSnapshot().value ?? {}) });
+        update();
+        const unsub = scope?.subscribe(update);
+        return () => {
+            if (typeof unsub === "function")
+                unsub();
+        };
+    }, [scope]);
+    // 探测标记：host resolve 后 enviIdl/sarscapeLib 非空且是探测到的路径
+    const env = scope?.getSnapshot().value;
+    const autoDetected = {
+        enviIdl: Boolean(env?.enviIdl),
+        sarscapeLib: Boolean(env?.sarscapeLib),
+    };
+    return createElement(SettingsCard, {
+        experiments: props.experiments,
+        settings: draft,
+        autoDetected,
+        onChange: (next) => setDraft(next),
+        onSave: (next) => {
+            // 逐字段写回 host（scope.set 带修订号，序列化保证顺序）
+            for (const [k, v] of Object.entries(next)) {
+                scope?.set(k, v);
+            }
+        },
+    });
+}
 export function apply(ctx) {
     // 1) conversationEvents：累积 insar 工具结果到 turn 业务数据
     ctx.conversationEvents.register(insarGenieDefinition);
     // 2) settings.section：设置卡片（设置页插件区，list + root scope）
+    //    通过 ctx.settingsScope 绑定 "insar-genie" namespace，读/写 host 设置值
+    //    （含启动时路径探测的 base 层默认值：ENVI IDL/SARscape 自动定位后在此显示）。
+    const scope = ctx.settingsScope?.bind({ namespace: "insar-genie" });
     ctx.slots.inject("settings.section", () => {
         const off = ctx.slots.register({
             name: "settings.section",
@@ -86,11 +127,9 @@ export function apply(ctx) {
             order: 40,
             label: () => "insar-genie",
             inject: () => ({ experiments: window.insarGenieBridge?.experiments }),
-        }, (props) => createElement(SettingsCard, {
+        }, (props) => createElement(SettingsCardBound, {
+            scope,
             experiments: props?.experiments,
-            onSave: (s) => {
-                console.info("[insar-genie] settings save requested", s);
-            },
         }));
         return () => {
             if (typeof off === "function")

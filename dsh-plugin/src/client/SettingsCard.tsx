@@ -28,7 +28,7 @@ const FIELD_LABELS: Record<keyof SettingsShape, string> = {
   earthdataUser: "ASF 账号",
   earthdataPassword: "ASF 密码",
   gacosEmail: "GACOS 邮箱",
-  gacosImapAuthCode: "GACOS 邮箱授权码",
+  gacosImapAuthCode: "GACOS 邮箱 IMAP 授权码",
   enviIdl: "ENVI IDL 路径",
   sarscapeLib: "SARscape 路径",
   workDir: "工作目录",

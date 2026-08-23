@@ -10,13 +10,15 @@ export interface SettingsShape {
     workDir: string;
     poeorbDir: string;
 }
+export declare const DEFAULT_SETTINGS: SettingsShape;
 /**
  * 设置卡片：凭证/路径/POEORB 表单 + 实验列表。
  * 挂载于 settings.section（设置页插件区）。
- * 数据通过注入的 settings + experiments 传入（host/agent 接线），本组件只做展示与编辑回调。
  *
- * 启动时路径探测：host 侧在 base 层填好 enviIdl/sarscapeLib 默认值，
- * 字段里已显示探测路径 —— 无需手动填专业软件路径（普通用户友好）。
+ * **受控组件**：value 全部来自 props.settings（父级经 settingsScope 从 host 读，含启动
+ * 探测的 base 默认值），用户改动通过 onChange 通知父级写回 host。组件自己不持有状态，
+ * 保证 host 值更新（scope 变化）能反映到字段。
+ *
  * autoDetected 标记（若有）则额外显示"▲ 启动时自动定位"。
  */
 export declare function SettingsCard(props: {
@@ -31,5 +33,6 @@ export declare function SettingsCard(props: {
         enviIdl?: boolean;
         sarscapeLib?: boolean;
     };
+    onChange?: (next: SettingsShape) => void;
     onSave?: (s: SettingsShape) => void;
 }): ReactNode;

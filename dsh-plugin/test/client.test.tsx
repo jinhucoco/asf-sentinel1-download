@@ -225,10 +225,11 @@ describe("InsarTurnTail（host→client 接线）", () => {
 });
 
 describe("SettingsCard（设置表单字段）", () => {
-  it("GACOS 授权码显示为'邮箱授权码'而非'IMAP 授权码'（普通用户可读）", () => {
+  it("GACOS 授权码显示具体标签'GACOS 邮箱 IMAP 授权码'（含邮箱+IMAP 术语，含义明确）", () => {
     render(createElement(SettingsCard, {}));
-    expect(screen.getByText("GACOS 邮箱授权码")).toBeTruthy();
-    expect(screen.queryByText(/IMAP 授权码/)).toBeNull();
+    expect(screen.getByText("GACOS 邮箱 IMAP 授权码")).toBeTruthy();
+    // 不再显示笼统的"邮箱授权码"
+    expect(screen.queryByText("GACOS 邮箱授权码")).toBeNull();
   });
 
   it("不显示死字段'注册表目录'（registry 目录由 host 硬编码，用户无需配置）", () => {
