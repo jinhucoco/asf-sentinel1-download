@@ -19,20 +19,44 @@ export function parsePairProgress(xml: string): { done: number; total: number } 
   return { done, total };
 }
 
-/** 从 guard.log 提取最后一条体检进度 */
+/** 从 guard.log 提取最后一条体检进度 + 动态速率。
+ *  速率 = 最后两条体检记录的 (对数差 ÷ 分钟差)，夹在 [0.01, 5] 对/分钟，
+ *  无可算（不足两条/时间倒退）时返回 0 由调用方兜底。 */
 export function parseGuardLog(log: string): {
   donePairs: number;
   totalPairs: number;
   diskGb: number;
+  pairsPerMinute: number;
 } {
   const lines = log.trim().split("\n").filter((l) => l.includes("体检"));
   const last = lines[lines.length - 1] ?? "";
   const pair = /(\d+)\/(\d+) 对/.exec(last);
   const disk = /([\d.]+)G/.exec(last);
+
+  // 动态速率：用最后两条体检记录推算
+  let pairsPerMinute = 0;
+  if (lines.length >= 2) {
+    const prev = lines[lines.length - 2];
+    const pprev = /(\d+)\/(\d+) 对/.exec(prev);
+    const timeRe = /\[(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\]/;
+    const tPrev = timeRe.exec(prev)?.[1];
+    const tLast = timeRe.exec(last)?.[1];
+    if (pprev && tPrev && tLast && pprev[1]) {
+      const dMin = (Date.parse(tLast.replace(" ", "T")) - Date.parse(tPrev.replace(" ", "T"))) / 60000;
+      const dPairs = Number(pair?.[1] ?? 0) - Number(pprev[1]);
+      if (dMin > 0 && dPairs > 0) {
+        const rate = dPairs / dMin;
+        // 夹在合理区间，避免除以极小时间段导致爆值
+        pairsPerMinute = Math.min(5, Math.max(0.01, rate));
+      }
+    }
+  }
+
   return {
     donePairs: pair ? Number(pair[1]) : 0,
     totalPairs: pair ? Number(pair[2]) : 0,
     diskGb: disk ? Number(disk[1]) : 0,
+    pairsPerMinute,
   };
 }
 
@@ -85,14 +109,17 @@ export function computeStatus(input: {
   const totalPairs = guard.totalPairs > 0 ? guard.totalPairs : total;
   const pct = totalPairs > 0 ? Math.round((donePairs / totalPairs) * 100) : 0;
 
+  // 速率：优先用 guard 动态速率，无则兜底硬编码 0.22（4.5 分/对）
+  const ppm = guard.pairsPerMinute > 0 ? guard.pairsPerMinute : 0.22;
+
   return {
     step,
     stepIndex,
     totalSteps: SBAS_STEPS.length,
     donePairs,
     totalPairs,
-    pairsPerMinute: 0.22, // 4.5 分钟/对 → 0.22 对/分钟（可后续从 Process.log 精确计算）
-    etaMinutes: totalPairs > 0 ? Math.round((totalPairs - donePairs) / 0.22) : 0,
+    pairsPerMinute: ppm,
+    etaMinutes: totalPairs > 0 ? Math.round((totalPairs - donePairs) / ppm) : 0,
     diskGb: guard.diskGb,
     progressLabel: `${stepLabels[step]} ${pct}%`,
     isStalled: false,

@@ -1,7 +1,7 @@
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { defineTool } from "@deepseek-ai/dsh-tools";
-import { getTemplate } from "./templates.js";
+import { getTemplate, validateBaseline } from "./templates.js";
 import { createRegistry } from "./registry.js";
 import { computeStatus } from "./status.js";
 import { runPython } from "./runner.js";
@@ -134,6 +134,13 @@ export function registerTools(
       demDir?: string;
       params?: Partial<ExperimentParams>;
     }) {
+      // 防呆：写入注册表前校验空间基线必须在 2-4%，杜绝 45% 事故
+      if (input.params?.maxPercBaseline !== undefined) {
+        const gate = validateBaseline(input.params.maxPercBaseline);
+        if (!gate.ok) {
+          throw new Error(`insar_register: ${gate.message}`);
+        }
+      }
       const id = deps.registry.create({
         name: input.name,
         terrain: input.terrain as TerrainType,

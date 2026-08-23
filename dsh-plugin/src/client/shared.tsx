@@ -1,4 +1,7 @@
 import type { ReactNode } from "react";
+import { validateBaseline } from "../shared/baseline.js";
+
+export { validateBaseline };
 
 /** 五步进度标签（与 host status.ts 一致） */
 export const STEP_LABELS = ["连接图", "干涉", "解缠", "反演1", "反演2", "地理编码"] as const;
@@ -40,18 +43,6 @@ export const TERRAIN_LABELS: Record<TerrainType, string> = {
   desert: "沙漠",
   loess: "黄土高原",
 };
-
-/**
- * 防呆：空间基线必须在 2-4%（杜绝 45% 事故）。
- * 与 host templates.ts 的 validateBaseline 语义一致。
- */
-export function validateBaseline(perc: number): { ok: boolean; message?: string } {
-  if (perc >= 2 && perc <= 4) return { ok: true };
-  return {
-    ok: false,
-    message: `空间基线 ${perc}% 不在允许区间 2-4%（SARscape 默认 45% 是事故根源，已禁止）`,
-  };
-}
 
 /** turnTail 插槽渲染的通用包装（简单卡片容器） */
 export function PanelCard(props: { title: string; children: ReactNode }): ReactNode {
