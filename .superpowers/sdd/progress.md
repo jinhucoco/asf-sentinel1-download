@@ -71,3 +71,6 @@
 - Task 8d: complete (a5d08a5 pushed; host→client 数据接线——conversationEvents Definition 累积 insar_status/list/register/templates 结果到 turn 数据，turnTail 改 chain select（修复缺 select 真实 shell 抛错），组件经 useSession 从会话快照取最新真实进度；55/55 测试 + 双 tsc 0；ParamConfirm 现由 insar_templates 结果驱动）
 - 独立审查(client 接线): 已分派（聚焦 a5d08a5 接线正确性 + 真实 shell 契约合规）
 - [部署同步] 完成: dsh plugin add 重装（BOM 修复后），安装副本现含 ./client exports + dsh.client.inject + client.js；profile bundles 已含 insar-genie-dsh
+- 独立审查(client 接线 a5d08a5): NOT_MERGEABLE —— 3 严重（latestInsarStatus 取最旧/snapshot 喂 initial 而非 snapshot prop/跨 turn 泄漏压制 experiments+registered）+ 重要 4-5 + 次要 6-8
+- 修复已提交 c667206 + 推送 dev（发现 1-3,5,7,8；60/60 测试 + 双 tsc 0；bundle 同步安装副本）
+- 复核审查: 已分派（逐条核实 c667206 修复 + 发现 4 的测试补覆盖）
