@@ -1,4 +1,4 @@
-window.__ModuleLoader__.load({ id: "insar-genie-dsh", factory: (require) => {
+window.__ModuleLoader__.load({ id: "@dsh-custom/insar-genie-dsh", factory: (require) => {
 import { createElement } from "react";
 import "@deepseek-ai/dsh-client-runtime/client";
 //#region src/client/shared.d.ts

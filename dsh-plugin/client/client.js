@@ -1,4 +1,4 @@
-window.__ModuleLoader__.load({ id: "insar-genie-dsh", factory: (require) => {
+window.__ModuleLoader__.load({ id: "@dsh-custom/insar-genie-dsh", factory: (require) => {
 Object.defineProperty(exports, Symbol.toStringTag, { value: 'Module' });
 let react = require("react");
 let react_jsx_runtime = require("react/jsx-runtime");
