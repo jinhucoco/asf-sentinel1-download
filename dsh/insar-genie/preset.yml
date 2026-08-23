@@ -1,2 +1,0 @@
-name: SBAS 全链路
-description: SBAS-InSAR 全链路自动化助手：从 ASF 下载 Sentinel-1 SLC（同轨同向、逐时相覆盖校验）→ 配套数据（POEORB/GACOS/DEM）→ SARscape 五步批处理（参数确认制）→ 守护监控。对话即用，装完自带 insar-genie 技能与全部脚本。
