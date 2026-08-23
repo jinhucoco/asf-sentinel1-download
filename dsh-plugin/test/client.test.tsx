@@ -244,6 +244,33 @@ describe("SettingsCard（设置表单字段）", () => {
     }));
     expect(screen.getAllByText("▲ 启动时自动定位").length).toBe(2);
   });
+
+  it("密码/授权码字段默认隐藏（type=password），点眼睛可切换显示", () => {
+    render(createElement(SettingsCard, {
+      settings: { earthdataPassword: "secret123", gacosImapAuthCode: "auth456" },
+    }));
+    // 定位密码输入框（ASF 密码）与授权码输入框
+    const pwLabel = screen.getByText("ASF 密码").closest("label")!;
+    const pwInput = pwLabel.querySelector("input")!;
+    expect(pwInput.type).toBe("password");
+    expect(pwInput.value).toBe("secret123");
+    // 默认有眼睛切换按钮
+    const showBtn = pwLabel.querySelector("button[aria-label='显示ASF 密码']")!;
+    expect(showBtn).toBeTruthy();
+    // 点击 -> 切换为 text（明文可见）
+    fireEvent.click(showBtn);
+    expect(pwInput.type).toBe("text");
+    // 再次点击 -> 隐藏回 password
+    const hideBtn = pwLabel.querySelector("button[aria-label='隐藏ASF 密码']")!;
+    fireEvent.click(hideBtn);
+    expect(pwInput.type).toBe("password");
+  });
+
+  it("普通字段（如 ASF 账号）无眼睛开关", () => {
+    render(createElement(SettingsCard, {}));
+    const userLabel = screen.getByText("ASF 账号").closest("label")!;
+    expect(userLabel.querySelector("button")).toBeNull();
+  });
 });
 
 describe("SettingsCardBound（经 settingsScope 绑定 host 设置值 + 写回）", () => {

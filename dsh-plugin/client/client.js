@@ -310,12 +310,19 @@ function SettingsCard(props) {
 		...DEFAULT_SETTINGS,
 		...props.settings ?? {}
 	};
+	const [revealed, setRevealed] = (0, react.useState)({});
 	const update = (key, value) => {
 		props.onChange?.({
 			...settings,
 			[key]: value
 		});
 	};
+	/** 敏感字段（存密码/授权码，默认隐藏，可切换显示） */
+	const isSecret = (key) => key === "earthdataPassword" || key === "gacosImapAuthCode";
+	const toggleReveal = (key) => setRevealed((prev) => ({
+		...prev,
+		[key]: !prev[key]
+	}));
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(PanelCard, {
 		title: "insar-genie 设置",
 		children: [
@@ -341,14 +348,36 @@ function SettingsCard(props) {
 							},
 							children: props.autoDetected?.[key] ? "▲ 启动时自动定位" : ""
 						}),
-						/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
-							type: key === "earthdataPassword" || key === "gacosImapAuthCode" ? "password" : "text",
-							value: settings[key],
-							onChange: (e) => update(key, e.target.value),
+						/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
 							style: {
-								marginTop: 2,
-								padding: "2px 6px"
-							}
+								display: "flex",
+								alignItems: "center",
+								gap: 4
+							},
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
+								type: isSecret(key) && !revealed[key] ? "password" : "text",
+								value: settings[key],
+								onChange: (e) => update(key, e.target.value),
+								style: {
+									marginTop: 2,
+									padding: "2px 6px",
+									flex: 1
+								}
+							}), isSecret(key) && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+								type: "button",
+								"aria-label": revealed[key] ? `隐藏${FIELD_LABELS[key]}` : `显示${FIELD_LABELS[key]}`,
+								onClick: () => toggleReveal(key),
+								title: revealed[key] ? "隐藏" : "显示",
+								style: {
+									marginTop: 2,
+									border: "none",
+									background: "transparent",
+									cursor: "pointer",
+									fontSize: 14,
+									padding: "2px 4px"
+								},
+								children: revealed[key] ? "🙈" : "👁"
+							})]
 						})
 					]
 				}, key))
