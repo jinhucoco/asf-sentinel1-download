@@ -4,6 +4,19 @@ window.__ModuleLoader__.load({ id: "@dsh-custom/insar-genie-dsh", factory: (requ
 		var exports = module.exports;
 import { createElement } from "react";
 import "@deepseek-ai/dsh-client-runtime/client";
+//#region src/client/SettingsCard.d.ts
+/** 设置表单字段（与 host settings.ts 的 SettingsSchema 对齐） */
+interface SettingsShape {
+  earthdataUser: string;
+  earthdataPassword: string;
+  gacosEmail: string;
+  gacosImapAuthCode: string;
+  enviIdl: string;
+  sarscapeLib: string;
+  workDir: string;
+  poeorbDir: string;
+}
+//#endregion
 //#region src/client/shared.d.ts
 /** 进度快照（与 host shared/types.ts 的 ExperimentStatus 对齐；client 独立声明避免 host 依赖） */
 interface ProgressSnapshot {
@@ -104,8 +117,29 @@ declare function InsarTurnTail(props: {
   matched: InsarTurnData;
   useSession: (selector: (s: unknown) => unknown) => unknown;
 }): ReturnType<typeof createElement> | null;
+/**
+ * SettingsCardBound：绑定 settingsScope 的容器组件。
+ * - 挂载时从 scope.getSnapshot().value 读 host 设置值（含启动探测 base 默认）
+ * - 订阅 scope 变化 → 更新显示（host 值变更时字段跟随）
+ * - onChange 通过 scope.set 逐字段写回 host
+ */
+declare function SettingsCardBound(props: {
+  scope?: {
+    getSnapshot(): {
+      value?: SettingsShape;
+    };
+    subscribe(fn: () => void): () => void;
+    set(field: string, value: unknown): void;
+  };
+  experiments?: {
+    id: string;
+    name: string;
+    terrain: string;
+    status: string;
+  }[];
+}): ReturnType<typeof createElement>;
 declare function apply(ctx: any): void;
 //#endregion
-export { InsarTurnTail, apply, inject, name };
+export { InsarTurnTail, SettingsCardBound, apply, inject, name };
 return module.exports; } });
 //# sourceMappingURL=client.d.ts.map

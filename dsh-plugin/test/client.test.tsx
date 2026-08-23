@@ -8,7 +8,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from "@testing-library/re
 import { createElement } from "react";
 import { ProgressPanel } from "../src/client/ProgressPanel.js";
 import { ParamConfirm } from "../src/client/ParamConfirm.js";
-import { InsarTurnTail } from "../src/client/index.js";
+import { InsarTurnTail, SettingsCardBound } from "../src/client/index.js";
 import { SettingsCard } from "../src/client/SettingsCard.js";
 import { validateBaseline, type ParamSnapshot, type ProgressSnapshot } from "../src/client/shared.js";
 
@@ -242,6 +242,51 @@ describe("SettingsCard（设置表单字段）", () => {
       autoDetected: { enviIdl: true, sarscapeLib: true },
     }));
     expect(screen.getAllByText("▲ 启动时自动定位").length).toBe(2);
+  });
+});
+
+describe("SettingsCardBound（经 settingsScope 绑定 host 设置值 + 写回）", () => {
+  function makeScope(initial: Record<string, string>) {
+    let value: { [k: string]: string } | undefined = initial;
+    const listeners: (() => void)[] = [];
+    return {
+      getSnapshot: () => ({ value }),
+      subscribe: (fn: () => void) => {
+        listeners.push(fn);
+        return () => {
+          const i = listeners.indexOf(fn);
+          if (i >= 0) listeners.splice(i, 1);
+        };
+      },
+      set: (field: string, v: unknown) => {
+        value = { ...(value ?? {}), [field]: String(v) };
+        listeners.forEach((fn) => fn());
+      },
+      _value: () => value,
+    };
+  }
+
+  it("从 host scope 读值（含探测默认）显示到字段", () => {
+    const scope = makeScope({
+      enviIdl: "C:\\Program Files\\Harris\\ENVI56\\IDL88\\bin\\bin.x86_64\\envi_idl.exe",
+      sarscapeLib: "C:\\Program Files\\SARMAP SA\\SARscape",
+      workDir: "G:\\",
+    });
+    render(createElement(SettingsCardBound, { scope, experiments: undefined }));
+    // 探测路径显示在受控字段
+    const inputs = screen.getAllByRole("textbox") as HTMLInputElement[];
+    expect(inputs.some((i) => i.value.includes("envi_idl.exe"))).toBe(true);
+    expect(inputs.some((i) => i.value.includes("SARMAP SA"))).toBe(true);
+  });
+
+  it("用户输入经'保存设置'按钮写回 host scope", () => {
+    const scope = makeScope({});
+    render(createElement(SettingsCardBound, { scope, experiments: undefined }));
+    const userInput = screen.getByLabelText("ASF 账号") as HTMLInputElement;
+    fireEvent.change(userInput, { target: { value: "demo@earthdata" } });
+    // 点击保存按钮触发 scope.set 写回
+    fireEvent.click(screen.getByText("保存设置") as HTMLButtonElement);
+    expect((scope as any)._value().earthdataUser).toBe("demo@earthdata");
   });
 });
 

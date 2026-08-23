@@ -275,6 +275,16 @@ function ParamConfirm(props) {
 
 //#endregion
 //#region src/client/SettingsCard.tsx
+const DEFAULT_SETTINGS = {
+	earthdataUser: "",
+	earthdataPassword: "",
+	gacosEmail: "",
+	gacosImapAuthCode: "",
+	enviIdl: "",
+	sarscapeLib: "",
+	workDir: "G:\\",
+	poeorbDir: ""
+};
 const FIELD_LABELS = {
 	earthdataUser: "ASF 账号",
 	earthdataPassword: "ASF 密码",
@@ -288,29 +298,23 @@ const FIELD_LABELS = {
 /**
 * 设置卡片：凭证/路径/POEORB 表单 + 实验列表。
 * 挂载于 settings.section（设置页插件区）。
-* 数据通过注入的 settings + experiments 传入（host/agent 接线），本组件只做展示与编辑回调。
 *
-* 启动时路径探测：host 侧在 base 层填好 enviIdl/sarscapeLib 默认值，
-* 字段里已显示探测路径 —— 无需手动填专业软件路径（普通用户友好）。
+* **受控组件**：value 全部来自 props.settings（父级经 settingsScope 从 host 读，含启动
+* 探测的 base 默认值），用户改动通过 onChange 通知父级写回 host。组件自己不持有状态，
+* 保证 host 值更新（scope 变化）能反映到字段。
+*
 * autoDetected 标记（若有）则额外显示"▲ 启动时自动定位"。
 */
 function SettingsCard(props) {
-	const [settings, setSettings] = (0, react.useState)({
-		earthdataUser: "",
-		earthdataPassword: "",
-		gacosEmail: "",
-		gacosImapAuthCode: "",
-		enviIdl: "",
-		sarscapeLib: "",
-		workDir: "G:\\",
-		poeorbDir: "",
+	const settings = {
+		...DEFAULT_SETTINGS,
 		...props.settings ?? {}
-	});
+	};
 	const update = (key, value) => {
-		setSettings((prev) => ({
-			...prev,
+		props.onChange?.({
+			...settings,
 			[key]: value
-		}));
+		});
 	};
 	return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(PanelCard, {
 		title: "insar-genie 设置",
@@ -572,7 +576,11 @@ function isParams(v) {
 * 注入位（未来 host 若提供 HTTP 桥可直接替换），默认数据源是会话快照。
 */
 const name = "insar-genie-dsh";
-const inject = ["slots", "conversationEvents"];
+const inject = [
+	"slots",
+	"conversationEvents",
+	"settingsScope"
+];
 /** turnTail 组件（chain 注册，session 作用域）：
 * - matched：selectInsarTurn 的返回（该 turn 有 insar 工具活动才认领）——**本 turn 数据优先**
 * - useSession：框架注入的会话快照选择器——仅用于对"本 turn 已有 insar_status 活动"的
@@ -611,8 +619,47 @@ function InsarTurnTail(props) {
 	} }, `✅ 实验已注册：${props.matched.registered.experimentId}`);
 	return null;
 }
+/**
+* SettingsCardBound：绑定 settingsScope 的容器组件。
+* - 挂载时从 scope.getSnapshot().value 读 host 设置值（含启动探测 base 默认）
+* - 订阅 scope 变化 → 更新显示（host 值变更时字段跟随）
+* - onChange 通过 scope.set 逐字段写回 host
+*/
+function SettingsCardBound(props) {
+	const scope = props.scope;
+	const [draft, setDraft] = (0, react.useState)(() => ({
+		...DEFAULT_SETTINGS,
+		...scope?.getSnapshot().value ?? {}
+	}));
+	(0, react.useEffect)(() => {
+		const update = () => setDraft({
+			...DEFAULT_SETTINGS,
+			...scope?.getSnapshot().value ?? {}
+		});
+		update();
+		const unsub = scope?.subscribe(update);
+		return () => {
+			if (typeof unsub === "function") unsub();
+		};
+	}, [scope]);
+	const env = scope?.getSnapshot().value;
+	const autoDetected = {
+		enviIdl: Boolean(env?.enviIdl),
+		sarscapeLib: Boolean(env?.sarscapeLib)
+	};
+	return (0, react.createElement)(SettingsCard, {
+		experiments: props.experiments,
+		settings: draft,
+		autoDetected,
+		onChange: (next) => setDraft(next),
+		onSave: (next) => {
+			for (const [k, v] of Object.entries(next)) scope?.set(k, v);
+		}
+	});
+}
 function apply(ctx) {
 	ctx.conversationEvents.register(insarGenieDefinition);
+	const scope = ctx.settingsScope?.bind({ namespace: "insar-genie" });
 	ctx.slots.inject("settings.section", () => {
 		const off = ctx.slots.register({
 			name: "settings.section",
@@ -620,11 +667,9 @@ function apply(ctx) {
 			order: 40,
 			label: () => "insar-genie",
 			inject: () => ({ experiments: window.insarGenieBridge?.experiments })
-		}, (props) => (0, react.createElement)(SettingsCard, {
-			experiments: props?.experiments,
-			onSave: (s) => {
-				console.info("[insar-genie] settings save requested", s);
-			}
+		}, (props) => (0, react.createElement)(SettingsCardBound, {
+			scope,
+			experiments: props?.experiments
 		}));
 		return () => {
 			if (typeof off === "function") off();
@@ -644,6 +689,7 @@ function apply(ctx) {
 
 //#endregion
 exports.InsarTurnTail = InsarTurnTail;
+exports.SettingsCardBound = SettingsCardBound;
 exports.apply = apply;
 exports.inject = inject;
 exports.name = name;
