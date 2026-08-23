@@ -80,3 +80,5 @@
   * fetchStatus 轮询 experimentId 兜底被移除（旧代码 registered.experimentId 兜底，现仅 latest.experimentId）
   * 多个完成 turn 各渲染一块"实时"面板（per-turn tail + 全局最新，设计取舍）
 - client 接线: COMPLETE（a5d08a5 + c667206，dev 已推，复核 MERGEABLE）
+- [用户用 Pi 修加载报错] 8 提交（cd074d5..08f37fd，本地=远程 08f37fd）：cordis.patch.yml 入库、inject 服务名 [tools,settings]/[slots,conversationEvents]、bundle 注册 id 改包全名、var module/exports 注入、dsh.client.inject 包名 vs client.js 服务名区分、P1 防呆接入 host 工具 + validateBaseline 去重 + 动态速率
+- [GUI 端到端验证 2026-08-23] 浏览器打开正常（0 报错）；/plugins/@dsh-custom/insar-genie-dsh/client.js 加载 200；设置页出现 insar-genie 区段且 SettingsCard 完整渲染（9 字段+保存）；host 工具 insar_register/insar_list/insar_status 全链路可用（真实 G:\minqin1_result_SBAS_processing 读出 干涉图 21% 65/310）；注册表持久化于 ~/.insar-genie/experiments.json；测试实验已清理
