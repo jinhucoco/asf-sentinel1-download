@@ -560,11 +560,7 @@ function isParams(v) {
 * 注入位（未来 host 若提供 HTTP 桥可直接替换），默认数据源是会话快照。
 */
 const name = "insar-genie-dsh";
-const inject = [
-	"@deepseek-ai/dsh-client-runtime",
-	"@deepseek-ai/dsh-client-locale",
-	"@deepseek-ai/dsh-client-ui-settings-plugins"
-];
+const inject = ["slots"];
 /** turnTail 组件（chain 注册，session 作用域）：
 * - matched：selectInsarTurn 的返回（该 turn 有 insar 工具活动才认领）——**本 turn 数据优先**
 * - useSession：框架注入的会话快照选择器——仅用于对"本 turn 已有 insar_status 活动"的
