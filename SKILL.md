@@ -564,6 +564,20 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 5. 每步执行前**重复**此流程（不止第 2 步，每步都要确认）
 6. 根据地形和位置**主动给推荐**，不能只罗列参数
 
+### insar_pipeline 两阶段确认后跑（B1）
+
+调用 `insar_pipeline` 是**两阶段**：
+
+1. **阶段 1（默认，不给 `confirmed`）**：`insar_pipeline(experimentId)` → 生成本文档的 5 卡参数确认表（`pipeline.cards`，每参数标 **默认值/推荐值/理由**）+ 写入 config.env，**返回 `needsConfirm: true` 但不执行**。client 会展示这 5 卡。
+2. **阶段 2（用户确认后）**：AI 拿到用户「没问题/全部确认」的对话确认后，**用 `insar_pipeline(experimentId, confirmed: true)` 重新调用**才真正执行（连接图→干涉→反演1→反演2→地理编码，含连接图扩基线门 + 每步后参数一致性校验门）。
+
+> 用户只需在对话里确认（如「都用推荐值」「确认」），AI 据此发起以 `confirmed: true` 的第二阶段调用。**参数确认一定要先发生，绝不直接跑。**
+
+### 实验目录（B3）
+
+`insar_pipeline` 的实验目录优先从 **settings 侧边栏的 `experimentDir`** 读取；未配置则回退到实验记录 `exp.dir`。
+> 注意：该实验目录需包含 `bat/` 子目录（内置五步 bat + `config.env`），`insar_pipeline` 用其定位 `bat/<step>/<bat>` 并写 `config.env`（bat 读 `%~dp0..\\..\config.env`）。若用自定义实验目录，需先复制插件的 `assets/experiment` 内容到该目录。
+
 ### 提醒话术模板
 
 ```
