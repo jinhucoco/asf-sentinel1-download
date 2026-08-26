@@ -573,10 +573,16 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 
 > 用户只需在对话里确认（如「都用推荐值」「确认」），AI 据此发起以 `confirmed: true` 的第二阶段调用。**参数确认一定要先发生，绝不直接跑。**
 
-### 实验目录（B3）
+### 实验目录与脚本根（解耦）
 
-`insar_pipeline` 的实验目录优先从 **settings 侧边栏的 `experimentDir`** 读取；未配置则回退到实验记录 `exp.dir`。
-> 注意：该实验目录需包含 `bat/` 子目录（内置五步 bat + `config.env`），`insar_pipeline` 用其定位 `bat/<step>/<bat>` 并写 `config.env`（bat 读 `%~dp0..\\..\config.env`）。若用自定义实验目录，需先复制插件的 `assets/experiment` 内容到该目录。
+两个独立设置（settings 侧边栏 → insar-genie）：
+
+- **`scriptsDir`（脚本根）**：五步 bat 树 + config.env 的家。**留空 = 插件内置 assets/experiment（开箱即用）**。多实验共享同一份脚本（单实验串行跑，无并发互踩）；每次运行前 `insar_pipeline` 会重写此处的 config.env（含扩基线后的最终基线）。
+- **`experimentDir`（实验数据根）**：RESULT_ROOT / TMP_DIR / gacos_list / sar_modules 所在。留空则用注册实验的 `exp.dir`。
+
+实验目录因此回归**纯数据**——无需再把插件的 bat 复制进实验目录。bat 通过 `%~dp0..\..\config.env` 在脚本根找配置，数据全靠 config.env 里的绝对路径。
+
+**换新研究区必须设 `SUPER_REFERENCE`**（连接图中央超参考 SLC list 完整路径，写入 config.env 或注册参数 `params.superReference`）；留空则走 bat 内置兜底（民勤 sentinel1_135_20230112… 清单，仅适用同类数据）。
 
 ### 提醒话术模板
 
