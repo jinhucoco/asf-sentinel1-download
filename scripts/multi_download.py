@@ -18,6 +18,7 @@ import hashlib
 import json
 import os
 import shutil
+import socket
 import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -98,10 +99,12 @@ def download_chunk(session, url, start, end, part_path, idx, logfile):
     start += existing
 
     headers = {"Range": f"bytes={start}-{end}"}
+    # D7-①: 读超时 120s → 30s,断连立即重连,不挂死(ASF CDN 对慢连接会踢)
     for attempt in range(RETRIES):
         try:
-            r = session.get(url, stream=True, headers=headers, timeout=(30, 120))
+            r = session.get(url, stream=True, headers=headers, timeout=(30, 30))
             if r.status_code in (200, 206):
+                enable_tcp_keepalive(r)  # D7-④: TCP keep-alive 保活
                 mode = "ab" if existing else "wb"
                 with open(part_path, mode) as f:
                     f.writelines(r.iter_content(1 << 20))
@@ -120,6 +123,26 @@ def md5_of(path):
         for chunk in iter(lambda: f.read(1 << 20), b""):
             h.update(chunk)
     return h.hexdigest()
+
+
+def enable_tcp_keepalive(r):
+    """D7-④: 对响应连接启用 TCP keep-alive,防 CDN/运营商 NAT 掐空闲连接。
+    requests stream 连接在 r.raw._connection.sock;失败静默(不影响下载)。"""
+    try:
+        sock = r.raw._connection.sock
+        if sock is None:
+            return
+        sock.setsockopt(getattr(socket, "SOL_SOCKET", 1), getattr(socket, "SO_KEEPALIVE", 8), 1)
+        # 每 30s 探测,3 次失败断开
+        for name, val in (("TCP_KEEPIDLE", 30), ("TCP_KEEPINTVL", 30), ("TCP_KEEPCNT", 3)):
+            opt = getattr(socket, name, None)
+            if opt is not None:
+                try:
+                    sock.setsockopt(getattr(socket, "IPPROTO_TCP", 6), opt, val)
+                except OSError:
+                    pass
+    except Exception:
+        pass
 
 
 MD5_DONE_FILE = "md5_done.json"  # 输出目录下：已通过校验的文件名 → md5 缓存
@@ -203,18 +226,23 @@ def multi_download(session, url, dest, total_size, threads, logfile, expected_md
                     results[i] = (False, 0)
 
     # 合并分片
+    # D7-②: 失败分片不再整文件作废——保留已完成分片(.part),让外层/下次续传继续补下。
+    # 原逻辑: 任一失败 → 删所有 parts 作废整个文件,网络差时反复重下首部浪费大量带宽。
+    done_parts = []
+    failed_parts = []
+    for i in range(n):
+        if not results.get(i) or not results[i][0]:
+            failed_parts.append(i)
+            continue
+        done_parts.append(parts[i])
+    if failed_parts:
+        log(f"  [片{failed_parts} 失败] 保留 {len(done_parts)} 个已完成分片,下次续传补下(不整文件作废)", logfile)
+        # 已成功分片仍可合并? 不——缺片则整文件不完整;保持 .part 供续传,
+        # 但为不占额外空间且续传快,把已完成部分尝试合并到 dest 的临时区? 保持简单:
+        # 直接返回失败,dest 不存在,parts 保留(断点续传靠 download_chunk 的 existing>0 跳过)。
+        return False, 0
     with open(dest, "wb") as out:
         for i in range(n):
-            if not results.get(i) or not results[i][0]:
-                log(f"  [片{i}] 失败，文件作废（下次重下）", logfile)
-
-                for p in parts:
-                    try:
-                        os.remove(p)
-                    except OSError:
-                        pass
-
-                return False, 0
             with open(parts[i], "rb") as f:
                 shutil.copyfileobj(f, out)
     for p in parts:
@@ -364,6 +392,7 @@ def main():
         log(f"搜索路径: {len(rows)} 景", logfile)
 
     ok = fail = skip = 0
+    consec_fail = 0  # D7-③: 连续失败计数(触发渐进降并发)
     completed = True  # 完整跑完清单才写 complete.flag（中断不写）
     # 2026-08-17 修复：不再在启动时删除 complete.flag。
     # 原逻辑每次启动删 flag → 扫描清单期间 flag 缺失 → run_dl（每5分钟）误判
@@ -436,14 +465,21 @@ def main():
             log(f"[{i}/{len(rows)}] [DL] {fname[:40]}... {total / 1e9:.2f}GB", logfile)
 
             t0 = time.time()
-            # 2026-08-16 简化：始终多线程分片下载（移除 single/降级/升级机制）。
-            # 网络慢就慢，靠分片重试 + 补下兜底；夜间网速提升后自然提速。
+            # D7-③: 渐进降并发——连续失败时线程 8→4→2→1(网络极差降载,避免被 CDN 限流/超时踢掉)。
+            # 修复 2026-08-16 简化为"始终固定多线程": 固定高并发在弱网下每条连接都被拖慢/断连,
+            # 降并发后单连接更稳(配合分片重试+保活)。成功后恢复满并发(夜间网速提升自动提速)。
+            eff_threads = args.threads
+            if consec_fail >= 2:
+                eff_threads = max(1, args.threads // (2 ** min(consec_fail // 2, 3)))
+            if eff_threads != args.threads:
+                log(f"[DEGRADE] 连续失败 {consec_fail} 次，线程 {args.threads}→{eff_threads}", logfile)
             ok_flag, size = multi_download(
-                session, url, dest, total, args.threads, logfile, expected_md5
+                session, url, dest, total, eff_threads, logfile, expected_md5
             )
             dt = time.time() - t0
             if ok_flag:
                 ok += 1
+                consec_fail = 0  # 成功即恢复计数
                 # 下载成功且校验过 → 写 md5 缓存（防下次重启重算）
                 if expected_md5:
                     try:
@@ -458,16 +494,22 @@ def main():
                 )
             else:
                 fail += 1
+                consec_fail += 1  # D7-③: 连续失败递增(触发降并发)
                 log(f"[{i}/{len(rows)}] [FAIL] {fname[:45]}", logfile)
         except Exception as e:
             fail += 1
+            consec_fail += 1  # D7-③
             log(f"[{i}/{len(rows)}] [WARN] {fname[:45]} :: {str(e)[:80]}", logfile)
 
         time.sleep(2)
 
     log(f"=== 完成: 成功 {ok} / 失败 {fail} / 跳过 {skip} ===", logfile)
-    # 任务完成标记（配合守护脚本防无限重启；仅完整跑完清单时写）
-    if completed:
+    # 任务完成标记（配合守护脚本防无限重启；仅完整跑完清单【且无失败】才写）
+    # 2026-08-30 D1 修复：原逻辑 `if completed:` 只看"是否跑完整张清单"，
+    # 网络差时大量 FAIL 也写 complete.flag → run_dl/守护误判"全部完成"停止拉取，
+    # 实际丢文件（实测 成功3/失败131 也写 flag，131 景丢失）。
+    # 正确语义：有失败文件 = 任务未真正完成，不写 flag，让守护/run_dl 继续补下。
+    if completed and fail == 0:
         try:
             cf = os.path.join(args.out, "complete.flag")
             with open(cf, "w", encoding="utf-8") as f:
@@ -475,6 +517,11 @@ def main():
             log(f"[DONE] 任务完成，写入标记: {cf}", logfile)
         except Exception:
             pass
+    elif fail > 0:
+        log(
+            f"[NOTE] 存在 {fail} 个失败文件，不写 complete.flag（待守护/run_dl 续跑补下）",
+            logfile,
+        )
 
 
 if __name__ == "__main__":
