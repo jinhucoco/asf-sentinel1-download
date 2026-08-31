@@ -395,6 +395,8 @@ python scripts/multi_download.py \
 | 搜索结果为空 | 扩大时间范围或检查 AOI 坐标是否为 WGS84 |
 | API 报错 | 检查网络/代理；ASF API 偶发限流，稍后重试 |
 | shp 报错 | 确认 shp 是 WGS84（经纬度）坐标系 |
+| **搜索 VV 返回 0 结果（D6）** | CMR 中该区域 SLC 极化属性是 `VV+VH`（1SDV 双极化），`--pol VV` 匹配不到。改用 `--pol VV+VH` 下载，SARscape 导入用 `ONLY_VV_POL` 取 VV。 |
+| **批处理 Execute 静默失败（D5）** | 查 `<tmp>/work/Process.trace` 的 `[SARS_LOG]`/`[CORE][!]`/`EC=70000` 行；sarbatch_*.txt 只有 NLS 警告不可信（D8）。`SARSCAPE_LIB` 必须含 `\auxiliary` 子路径。 |
 
 ### ⚠️ GACOS 实操坑（2026-08-17/18 民勤实测沉淀）
 
@@ -415,6 +417,17 @@ login/logout，短间隔几十次完整登录触发 163 风控，返回 `SELECT 
 **诊断提示**：IMAP SELECT 必须在 login 之后（imaplib 状态机）。
 
 **④ GACOS 结果用 ImportGACOS 导入后才可用于干涉**（见"配套数据必须处理"章节）。
+
+**⑤ GACOS 批量导入需 .rsc 配套（D3）**：`run_gacos_bulk.bat` 的 `ImportGACOS`
+输入 `YYYYMMDD.ztd` 时必须同目录存在 `YYYYMMDD.ztd.rsc`（下载产物全套含 .ztd/.rsc/预览图）。
+只复制 .ztd 会报 `EC=70000 [WRONG INPUT PARAMETERS] theArg=xxx.ztd.rsc`。批量导入前确保
+`<sar>/gacos/` 下 .ztd 与 .rsc 数量一致。
+
+**⑥ GACOS 批处理产物无 `_geo` 后缀（D14，实测中）**：批量导入产物命名 `20200104`
+（无 `_geo`），GUI 产物是 `20200104_geo`（SARscape 对 geocoded 产物的命名约定）。两者
+格式一致（product_type=GACOS ZDT、GeocodedImage=OK、ENVI float32 WGS84），SARscape
+按 .sml/.hdr 识别而非文件名后缀；但 WAVER_VAPOUR_FILE_LIST 引用是否严格要求 `_geo`
+待干涉实测确认（若严格要求，软链/重命名补后缀即可，无需重导）。
 
 ### ⚠️ config.env 行尾必须是 CRLF（2026-08-18 民勤实测）
 
@@ -573,16 +586,10 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 
 > 用户只需在对话里确认（如「都用推荐值」「确认」），AI 据此发起以 `confirmed: true` 的第二阶段调用。**参数确认一定要先发生，绝不直接跑。**
 
-### 实验目录与脚本根（解耦）
+### 实验目录（B3）
 
-两个独立设置（settings 侧边栏 → insar-genie）：
-
-- **`scriptsDir`（脚本根）**：五步 bat 树 + config.env 的家。**留空 = 插件内置 assets/experiment（开箱即用）**。多实验共享同一份脚本（单实验串行跑，无并发互踩）；每次运行前 `insar_pipeline` 会重写此处的 config.env（含扩基线后的最终基线）。
-- **`experimentDir`（实验数据根）**：RESULT_ROOT / TMP_DIR / gacos_list / sar_modules 所在。留空则用注册实验的 `exp.dir`。
-
-实验目录因此回归**纯数据**——无需再把插件的 bat 复制进实验目录。bat 通过 `%~dp0..\..\config.env` 在脚本根找配置，数据全靠 config.env 里的绝对路径。
-
-**换新研究区必须设 `SUPER_REFERENCE`**（连接图中央超参考 SLC list 完整路径，写入 config.env 或注册参数 `params.superReference`）；留空则走 bat 内置兜底（民勤 sentinel1_135_20230112… 清单，仅适用同类数据）。
+`insar_pipeline` 的实验目录优先从 **settings 侧边栏的 `experimentDir`** 读取；未配置则回退到实验记录 `exp.dir`。
+> 注意：该实验目录需包含 `bat/` 子目录（内置五步 bat + `config.env`），`insar_pipeline` 用其定位 `bat/<step>/<bat>` 并写 `config.env`（bat 读 `%~dp0..\\..\config.env`）。若用自定义实验目录，需先复制插件的 `assets/experiment` 内容到该目录。
 
 ### 提醒话术模板
 
@@ -625,6 +632,7 @@ config.json 含明文密码，仅本机使用，切勿分享或提交到仓库�
 | 第 4 步 反演2 | `experiment/bat/03_inversion/run_inv2.bat` | 「开始第 4 步」 |
 | 第 5 步 地理编码 | `experiment/bat/04_geocode/run_geocode.bat` | 「开始第 5 步」 |
 | 第 0 步 SLC 导入 | `experiment/bat/00_import/run_import_slc.bat`（ImportSentinel1Format，支持 ROI 裁剪/极化可选，verify 模式校验）| 「导入数据」 |
+| **SLC 批量导入（推荐）** | **`insar_import_bulk` 工具**（按时相分组驱动 `import_slc_bulk.py`；双帧时相同日 2 景一起导入 → msc 拼接，单帧不拼 → slc_list；支持续跑/AOI/单日期）| 「批量导入 SLC」 |
 | DEM 预处理 | `experiment/bat/03_data_prep/run_dem.bat`（三步：merge_hgt_dem.py → ImportEnviOriginal → ToolsGeoid）+ `experiment/tools/merge_hgt_dem.py`（config.env 配 DEM_RAW/DEM_DAT/DEM_ENVI/DEM_FINAL）| 「处理 DEM」 |
 
 AI 执行要点：
